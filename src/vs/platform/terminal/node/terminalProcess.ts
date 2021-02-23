@@ -25,6 +25,8 @@ const WRITE_MAX_CHUNK_SIZE = 50;
 const WRITE_INTERVAL_MS = 5;
 
 export class TerminalProcess extends Disposable implements ITerminalChildProcess {
+	readonly id = 0;
+
 	private _exitCode: number | undefined;
 	private _exitMessage: string | undefined;
 	private _closeTimeout: any;
@@ -43,6 +45,7 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 	private _unacknowledgedCharCount: number = 0;
 
 	public get exitMessage(): string | undefined { return this._exitMessage; }
+	public get currentTitle(): string { return this._currentTitle; }
 
 	private readonly _onProcessData = this._register(new Emitter<string>());
 	public get onProcessData(): Event<string> { return this._onProcessData.event; }
@@ -202,9 +205,7 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 
 	private _setupTitlePolling(ptyProcess: pty.IPty) {
 		// Send initial timeout async to give event listeners a chance to init
-		setTimeout(() => {
-			this._sendProcessTitle(ptyProcess);
-		}, 0);
+		setTimeout(() => this._sendProcessTitle(ptyProcess), 0);
 		// Setup polling for non-Windows, for Windows `process` doesn't change
 		if (!platform.isWindows) {
 			this._titleInterval = setInterval(() => {
