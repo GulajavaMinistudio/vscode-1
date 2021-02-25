@@ -33,38 +33,10 @@ export class LocalPty extends Disposable implements ITerminalChildProcess {
 
 	constructor(
 		readonly id: number,
+		readonly shouldPersist: boolean,
 		@ILocalPtyService private readonly _localPtyService: ILocalPtyService
 	) {
 		super();
-		this._localPtyService.onProcessData(e => e.id === this.id && this._onProcessData.fire(e.event));
-		this._localPtyService.onProcessExit(e => e.id === this.id && this._onProcessExit.fire(e.event));
-		this._localPtyService.onProcessReady(e => e.id === this.id && this._onProcessReady.fire(e.event));
-		this._localPtyService.onProcessTitleChanged(e => e.id === this.id && this._onProcessTitleChanged.fire(e.event));
-		this._localPtyService.onProcessOverrideDimensions(e => e.id === this.id && this._onProcessOverrideDimensions.fire(e.event));
-		this._localPtyService.onProcessResolvedShellLaunchConfig(e => e.id === this.id && this._onProcessResolvedShellLaunchConfig.fire(e.event));
-		this._localPtyService.onProcessReplay(e => {
-			if (e.id !== this.id) {
-				return;
-			}
-			try {
-				this._inReplay = true;
-
-				for (const innerEvent of e.event.events) {
-					if (innerEvent.cols !== 0 || innerEvent.rows !== 0) {
-						// never override with 0x0 as that is a marker for an unknown initial size
-						this._onProcessOverrideDimensions.fire({ cols: innerEvent.cols, rows: innerEvent.rows, forceExactSize: true });
-					}
-					this._onProcessData.fire({ data: innerEvent.data, sync: true });
-				}
-			} finally {
-				this._inReplay = false;
-			}
-
-			// remove size override
-			this._onProcessOverrideDimensions.fire(undefined);
-
-			return;
-		});
 
 		if (this._localPtyService.onPtyHostExit) {
 			this._localPtyService.onPtyHostExit(() => {
@@ -75,6 +47,9 @@ export class LocalPty extends Disposable implements ITerminalChildProcess {
 
 	start(): Promise<ITerminalLaunchError | undefined> {
 		return this._localPtyService.start(this.id);
+	}
+	detach(): void {
+		this._localPtyService.detachFromProcess(this.id);
 	}
 	shutdown(immediate: boolean): void {
 		this._localPtyService.shutdown(this.id, immediate);
@@ -106,5 +81,42 @@ export class LocalPty extends Disposable implements ITerminalChildProcess {
 			return;
 		}
 		this._localPtyService.acknowledgeDataEvent(this.id, charCount);
+	}
+
+	handleData(e: string | IProcessDataEvent) {
+		this._onProcessData.fire(e);
+	}
+	handleExit(e: number | undefined) {
+		this._onProcessExit.fire(e);
+	}
+	handleReady(e: { pid: number, cwd: string }) {
+		this._onProcessReady.fire(e);
+	}
+	handleTitleChanged(e: string) {
+		this._onProcessTitleChanged.fire(e);
+	}
+	handleOverrideDimensions(e: ITerminalDimensionsOverride | undefined) {
+		this._onProcessOverrideDimensions.fire(e);
+	}
+	handleResolvedShellLaunchConfig(e: IShellLaunchConfig) {
+		this._onProcessResolvedShellLaunchConfig.fire(e);
+	}
+
+	handleReplay(e: IPtyHostProcessReplayEvent) {
+		try {
+			this._inReplay = true;
+			for (const innerEvent of e.events) {
+				if (innerEvent.cols !== 0 || innerEvent.rows !== 0) {
+					// never override with 0x0 as that is a marker for an unknown initial size
+					this._onProcessOverrideDimensions.fire({ cols: innerEvent.cols, rows: innerEvent.rows, forceExactSize: true });
+				}
+				this._onProcessData.fire({ data: innerEvent.data, sync: true });
+			}
+		} finally {
+			this._inReplay = false;
+		}
+
+		// remove size override
+		this._onProcessOverrideDimensions.fire(undefined);
 	}
 }

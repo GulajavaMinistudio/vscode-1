@@ -45,11 +45,11 @@ export interface ITerminalInstanceService {
 	getXtermUnicode11Constructor(): Promise<typeof XTermUnicode11Addon>;
 	getXtermWebglConstructor(): Promise<typeof XTermWebglAddon>;
 	createWindowsShellHelper(shellProcessId: number, xterm: XTermTerminal): IWindowsShellHelper;
-	createTerminalProcess(shellLaunchConfig: IShellLaunchConfig, cwd: string, cols: number, rows: number, env: IProcessEnvironment, windowsEnableConpty: boolean): Promise<ITerminalChildProcess>;
-	attachToProcess(id: number): Promise<ITerminalChildProcess>;
+	createTerminalProcess(shellLaunchConfig: IShellLaunchConfig, cwd: string, cols: number, rows: number, env: IProcessEnvironment, windowsEnableConpty: boolean, shouldPersist: boolean): Promise<ITerminalChildProcess>;
+	attachToProcess(id: number): Promise<ITerminalChildProcess | undefined>;
 	getDefaultShellAndArgs(useAutomationShell: boolean, platformOverride?: Platform): Promise<{ shell: string, args: string[] | string | undefined }>;
 	getMainProcessParentEnv(): Promise<IProcessEnvironment>;
-	setTerminalLayoutInfo(args: ISetTerminalLayoutInfoArgs): void;
+	setTerminalLayoutInfo(args?: ISetTerminalLayoutInfoArgs): void;
 	setTerminalLayoutInfo(layout: ITerminalsLayoutInfoById): void;
 	getTerminalLayoutInfo(): Promise<ITerminalsLayoutInfo | undefined>;
 }
@@ -283,6 +283,11 @@ export interface ITerminalInstance {
 	readonly persistentTerminalId: number | undefined;
 
 	/**
+	 * Whether the process should be persisted across reloads.
+	 */
+	readonly shouldPersist: boolean;
+
+	/**
 	 * An event that fires when the terminal instance's title changes.
 	 */
 	onTitleChanged: Event<ITerminalInstance>;
@@ -397,6 +402,11 @@ export interface ITerminalInstance {
 	 * get cut off. If immediate kill any terminal processes immediately.
 	 */
 	dispose(immediate?: boolean): void;
+
+	/**
+	 * Inform the process that the terminal is now detached.
+	 */
+	detachFromProcess(): void;
 
 	/**
 	 * Forces the terminal to redraw its viewport.

@@ -126,7 +126,7 @@ export class TerminalService implements ITerminalService {
 		this._activeTabIndex = 0;
 		this._isShuttingDown = false;
 		this._findState = new FindReplaceState();
-		lifecycleService.onBeforeShutdown(async e => e.veto(this._onBeforeShutdown(), 'veto.terminal'));
+		lifecycleService.onBeforeShutdown(async e => e.veto(this._onBeforeShutdown(e.reason), 'veto.terminal'));
 		lifecycleService.onWillShutdown(e => this._onWillShutdown(e));
 		this._terminalFocusContextKey = KEYBINDING_CONTEXT_TERMINAL_FOCUS.bindTo(this._contextKeyService);
 		this._terminalShellTypeContextKey = KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE.bindTo(this._contextKeyService);
@@ -155,7 +155,6 @@ export class TerminalService implements ITerminalService {
 			this._connectionState = TerminalConnectionState.Connecting;
 		} else {
 			this._connectionState = TerminalConnectionState.Connected;
-			this.attachProcessLayoutListeners(true);
 		}
 	}
 
@@ -182,7 +181,7 @@ export class TerminalService implements ITerminalService {
 	private async _reconnectToLocalTerminals(): Promise<void> {
 		// Reattach to all local terminals
 		const layoutInfo = await this._terminalInstanceService.getTerminalLayoutInfo();
-		if (layoutInfo) {
+		if (layoutInfo && layoutInfo.tabs.length > 0) {
 			this._recreateTerminalTabs(layoutInfo);
 			// now that terminals have been restored,
 			// attach listeners to update local state when terminals are changed
@@ -300,13 +299,14 @@ export class TerminalService implements ITerminalService {
 		this._extHostsReady[remoteAuthority] = { promise, resolve };
 	}
 
-	private _onBeforeShutdown(): boolean | Promise<boolean> {
+	private _onBeforeShutdown(reason: ShutdownReason): boolean | Promise<boolean> {
 		if (this.terminalInstances.length === 0) {
 			// No terminal instances, don't veto
 			return false;
 		}
 
-		if (this.configHelper.config.confirmOnExit) {
+		const shouldPersistTerminals = this._configHelper.config.enablePersistentSessions && reason === ShutdownReason.RELOAD;
+		if (this.configHelper.config.confirmOnExit && !shouldPersistTerminals) {
 			return this._onBeforeShutdownAsync();
 		}
 
@@ -326,12 +326,15 @@ export class TerminalService implements ITerminalService {
 
 	private _onWillShutdown(e: WillShutdownEvent): void {
 		// Don't touch processes if the shutdown was a result of reload as they will be reattached
-		if (e.reason === ShutdownReason.RELOAD) {
+		const shouldPersistTerminals = this._configHelper.config.enablePersistentSessions && e.reason === ShutdownReason.RELOAD;
+		if (shouldPersistTerminals) {
+			this.terminalInstances.forEach(instance => instance.detachFromProcess());
 			return;
 		}
 
 		// Force dispose of all terminal instances
 		this.terminalInstances.forEach(instance => instance.dispose(true));
+		this._terminalInstanceService.setTerminalLayoutInfo(undefined);
 	}
 
 	public getTabLabels(): string[] {
@@ -572,7 +575,7 @@ export class TerminalService implements ITerminalService {
 		instance.addDisposable(instance.onLinksReady(this._onInstanceLinksReady.fire, this._onInstanceLinksReady));
 		instance.addDisposable(instance.onDimensionsChanged(() => {
 			this._onInstanceDimensionsChanged.fire(instance);
-			this._updateRemoteState();
+			!!this._environmentService.remoteAuthority ? this._updateRemoteState() : this._updateLocalState();
 		}));
 		instance.addDisposable(instance.onMaximumDimensionsChanged(() => this._onInstanceMaximumDimensionsChanged.fire(instance)));
 		instance.addDisposable(instance.onFocus(this._onActiveInstanceChanged.fire, this._onActiveInstanceChanged));

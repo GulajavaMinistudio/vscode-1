@@ -90,6 +90,7 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
 
 	public get environmentVariableInfo(): IEnvironmentVariableInfo | undefined { return this._environmentVariableInfo; }
 	public get persistentTerminalId(): number | undefined { return this._process?.id; }
+	public get shouldPersist(): boolean { return this._process?.shouldPersist || false; }
 
 	public get hasWrittenData(): boolean {
 		return this._hasWrittenData;
@@ -133,6 +134,12 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
 			this._process = null;
 		}
 		super.dispose();
+	}
+
+	public detachFromProcess(): void {
+		if (this._process?.detach) {
+			this._process.detach();
+		}
 	}
 
 	public async createProcess(
@@ -188,7 +195,13 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
 				// Flow control is not needed for ptys hosted in the same process (ie. the electron
 				// renderer).
 				if (shellLaunchConfig.attachPersistentTerminal) {
-					this._process = await this._terminalInstanceService.attachToProcess(shellLaunchConfig.attachPersistentTerminal.id);
+					const result = await this._terminalInstanceService.attachToProcess(shellLaunchConfig.attachPersistentTerminal.id);
+					if (result) {
+						this._process = result;
+					} else {
+						this._logService.trace(`Attach to process failed for terminal ${shellLaunchConfig.attachPersistentTerminal}`);
+						return undefined;
+					}
 				} else {
 					this._process = await this._launchLocalProcess(shellLaunchConfig, cols, rows, this.userHome, isScreenReaderModeEnabled);
 				}
@@ -254,7 +267,7 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
 		const variableResolver = terminalEnvironment.createVariableResolver(lastActiveWorkspace, this._configurationResolverService);
 		const env = terminalEnvironment.createTerminalEnvironment(shellLaunchConfig, envFromConfigValue, variableResolver, isWorkspaceShellAllowed, this._productService.version, this._configHelper.config.detectLocale, baseEnv);
 
-		if (!shellLaunchConfig.strictEnv) {
+		if (!shellLaunchConfig.strictEnv && !shellLaunchConfig.hideFromUser) {
 			this._extEnvironmentVariableCollection = this._environmentVariableService.mergedCollection;
 			this._register(this._environmentVariableService.onDidChangeCollections(newCollection => this._onEnvironmentVariableCollectionChange(newCollection)));
 			// For remote terminals, this is a copy of the mergedEnvironmentCollection created on
@@ -312,8 +325,10 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
 		const env = await this._setupEnvVariableInfo(activeWorkspaceRootUri, shellLaunchConfig);
 
 		const useConpty = this._configHelper.config.windowsEnableConpty && !isScreenReaderModeEnabled;
+		const shouldPersist = this._configHelper.config.enablePersistentSessions && !shellLaunchConfig.isFeatureTerminal;
+
 		this._terminalInstanceService.onPtyHostUnresponsive(() => this._onPtyDisconnect.fire());
-		return await this._terminalInstanceService.createTerminalProcess(shellLaunchConfig, initialCwd, cols, rows, env, useConpty);
+		return await this._terminalInstanceService.createTerminalProcess(shellLaunchConfig, initialCwd, cols, rows, env, useConpty, shouldPersist);
 	}
 
 	public setDimensions(cols: number, rows: number): void {

@@ -92,7 +92,7 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 
 		// Editor & group changes
 		this.editorGroupService.whenRestored.then(() => this.onEditorsRestored());
-		this.editorGroupService.onDidActiveGroupChange(group => this.handleActiveEditorChange(group));
+		this.editorGroupService.onDidChangeActiveGroup(group => this.handleActiveEditorChange(group));
 		this.editorGroupService.onDidAddGroup(group => this.registerGroupListeners(group as IEditorGroupView));
 		this.editorsObserver.onDidMostRecentlyActiveEditorsChange(() => this._onDidMostRecentlyActiveEditorsChange.fire());
 
@@ -752,7 +752,7 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 
 				// Persist setting
 				if (resource && e.item && e.item.id) {
-					const newAssociation: EditorAssociation = { editorType: e.item.id, filenamePattern: `*${extname(resource)}` };
+					const newAssociation: EditorAssociation = { viewType: e.item.id, filenamePattern: `*${extname(resource)}` };
 					const currentAssociations = [...this.configurationService.getValue<EditorsAssociations>(editorsAssociationsSettingId)];
 
 					// First try updating existing association

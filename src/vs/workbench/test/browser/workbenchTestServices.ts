@@ -463,16 +463,14 @@ export class TestLayoutService implements IWorkbenchLayoutService {
 
 	container: HTMLElement = window.document.body;
 
-	onZenModeChange: Event<boolean> = Event.None;
-	onCenteredLayoutChange: Event<boolean> = Event.None;
-	onFullscreenChange: Event<boolean> = Event.None;
-	onMaximizeChange: Event<boolean> = Event.None;
-	onPanelPositionChange: Event<string> = Event.None;
-	onPartVisibilityChange: Event<void> = Event.None;
-	onLayout = Event.None;
-
-	private readonly _onMenubarVisibilityChange = new Emitter<Dimension>();
-	get onMenubarVisibilityChange(): Event<Dimension> { return this._onMenubarVisibilityChange.event; }
+	onDidChangeZenMode: Event<boolean> = Event.None;
+	onDidChangeCenteredLayout: Event<boolean> = Event.None;
+	onDidChangeFullscreen: Event<boolean> = Event.None;
+	onDidChangeWindowMaximized: Event<boolean> = Event.None;
+	onDidChangePanelPosition: Event<string> = Event.None;
+	onDidChangePartVisibility: Event<void> = Event.None;
+	onDidLayout = Event.None;
+	onDidChangeNotificationsVisibility = Event.None;
 
 	layout(): void { }
 	isRestored(): boolean { return true; }
@@ -575,6 +573,7 @@ export class TestViewsService implements IViewsService {
 	onDidChangeViewVisibility = this.onDidChangeViewVisibilityEmitter.event;
 	isViewVisible(id: string): boolean { return true; }
 	getActiveViewWithId<T extends IView>(id: string): T | null { return null; }
+	getViewWithId<T extends IView>(id: string): T | null { return null; }
 	openView<T extends IView>(id: string, focus?: boolean | undefined): Promise<T | null> { return Promise.resolve(null); }
 	closeView(id: string): void { }
 	getViewProgressIndicator(id: string) { return null!; }
@@ -587,14 +586,14 @@ export class TestEditorGroupsService implements IEditorGroupsService {
 
 	constructor(public groups: TestEditorGroupView[] = []) { }
 
-	onDidActiveGroupChange: Event<IEditorGroup> = Event.None;
+	onDidChangeActiveGroup: Event<IEditorGroup> = Event.None;
 	onDidActivateGroup: Event<IEditorGroup> = Event.None;
 	onDidAddGroup: Event<IEditorGroup> = Event.None;
 	onDidRemoveGroup: Event<IEditorGroup> = Event.None;
 	onDidMoveGroup: Event<IEditorGroup> = Event.None;
-	onDidGroupIndexChange: Event<IEditorGroup> = Event.None;
+	onDidChangeGroupIndex: Event<IEditorGroup> = Event.None;
 	onDidLayout: Event<IDimension> = Event.None;
-	onDidEditorPartOptionsChange = Event.None;
+	onDidChangeEditorPartOptions = Event.None;
 
 	orientation = GroupOrientation.HORIZONTAL;
 	whenRestored: Promise<void> = Promise.resolve(undefined);
@@ -699,7 +698,7 @@ export class TestEditorGroupAccessor implements IEditorGroupsAccessor {
 
 	partOptions: IEditorPartOptions = {};
 
-	onDidEditorPartOptionsChange = Event.None;
+	onDidChangeEditorPartOptions = Event.None;
 	onDidVisibilityChange = Event.None;
 
 	getGroup(identifier: number): IEditorGroupView | undefined { throw new Error('Method not implemented.'); }
