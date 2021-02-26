@@ -54,7 +54,7 @@ import { CodeCellViewModel } from 'vs/workbench/contrib/notebook/browser/viewMod
 import { NotebookEventDispatcher, NotebookLayoutChangedEvent } from 'vs/workbench/contrib/notebook/browser/viewModel/eventDispatcher';
 import { CellViewModel, IModelDecorationsChangeAccessor, INotebookEditorViewState, NotebookViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/notebookViewModel';
 import { NotebookTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookTextModel';
-import { CellKind, CellToolbarLocKey, ICellRange, INotebookDecorationRenderOptions, INotebookKernel, NotebookCellRunState, NotebookRunState, ShowCellStatusBarKey } from 'vs/workbench/contrib/notebook/common/notebookCommon';
+import { CellKind, CellToolbarLocKey, ICellRange, INotebookDecorationRenderOptions, INotebookKernel, NotebookCellRunState, NotebookRunState, SelectionStateType, ShowCellStatusBarKey } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { NotebookProviderInfo } from 'vs/workbench/contrib/notebook/common/notebookProvider';
 import { INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
 import { editorGutterModifiedBackground } from 'vs/workbench/contrib/scm/browser/dirtydiffDecorator';
@@ -1171,10 +1171,19 @@ export class NotebookEditorWidget extends Disposable implements INotebookEditor 
 
 		const focusIdx = typeof viewState?.focus === 'number' ? viewState.focus : 0;
 		if (focusIdx < this._list.length) {
-			this._list.setFocus([focusIdx]);
-			this._list.setSelection([focusIdx]);
+			const element = this._list.element(focusIdx);
+			if (element) {
+				this.viewModel?.updateSelectionsFromEdits({
+					kind: SelectionStateType.Handle,
+					primary: element.handle,
+					selections: [element.handle]
+				});
+			}
 		} else if (this._list.length > 0) {
-			this._list.setFocus([0]);
+			this.viewModel?.updateSelectionsFromEdits({
+				kind: SelectionStateType.Index,
+				selections: [{ start: 0, end: 1 }]
+			});
 		}
 
 		if (viewState?.editorFocused) {
@@ -1295,7 +1304,11 @@ export class NotebookEditorWidget extends Disposable implements INotebookEditor 
 	//#region Editor Features
 
 	focusElement(cell: ICellViewModel) {
-		this._list.focusElement(cell);
+		this.viewModel?.updateSelectionsFromEdits({
+			kind: SelectionStateType.Handle,
+			primary: cell.handle,
+			selections: [cell.handle]
+		});
 	}
 
 	revealCellRangeInView(range: ICellRange) {
@@ -2566,6 +2579,7 @@ registerThemingParticipant((theme, collector) => {
 	collector.addRule(`.notebookOverlay .cell-list-top-cell-toolbar-container { top: -${SCROLLABLE_ELEMENT_PADDING_TOP}px }`);
 
 	collector.addRule(`.monaco-workbench .notebookOverlay > .cell-list-container > .monaco-list > .monaco-scrollable-element > .monaco-list-rows > .monaco-list-row .cell-bottom-toolbar-container { height: ${BOTTOM_CELL_TOOLBAR_HEIGHT}px }`);
+	collector.addRule(`.monaco-workbench .notebookOverlay > .cell-list-container > .monaco-list > .monaco-scrollable-element > .monaco-list-rows > .cell-list-top-cell-toolbar-container { height: ${BOTTOM_CELL_TOOLBAR_HEIGHT}px }`);
 	collector.addRule(`.monaco-workbench .notebookOverlay .monaco-list .monaco-list-row.code-cell-row.focused .cell-focus-indicator-left:before, .monaco-workbench .notebookOverlay .monaco-list .monaco-list-row.code-cell-row.focused .cell-focus-indicator-right:before { top: -${CELL_TOP_MARGIN}px; height: calc(100% + ${CELL_TOP_MARGIN + CELL_BOTTOM_MARGIN}px)}`);
 });
 
