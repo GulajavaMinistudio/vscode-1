@@ -12,21 +12,20 @@ import { ResourceMap } from 'vs/base/common/map';
 import { Schemas } from 'vs/base/common/network';
 import { isEqual } from 'vs/base/common/resources';
 import { URI, UriComponents } from 'vs/base/common/uri';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { EditorActivation, ITextEditorOptions, EditorOverride } from 'vs/platform/editor/common/editor';
+import { EditorActivation, EditorOverride } from 'vs/platform/editor/common/editor';
+import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ILogService } from 'vs/platform/log/common/log';
 import { BoundModelReferenceCollection } from 'vs/workbench/api/browser/mainThreadDocuments';
 import { extHostNamedCustomer } from 'vs/workbench/api/common/extHostCustomers';
-import { viewColumnToEditorGroup } from 'vs/workbench/common/editor';
-import { INotebookEditor } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
+import { getNotebookEditorFromEditorPane, INotebookEditor, NotebookEditorOptions } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
+import { NotebookEditorInput } from 'vs/workbench/contrib/notebook/browser/notebookEditorInput';
 import { NotebookCellTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookCellTextModel';
 import { NotebookTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookTextModel';
 import { INotebookCellStatusBarService } from 'vs/workbench/contrib/notebook/common/notebookCellStatusBarService';
 import { ICellEditOperation, ICellRange, IEditor, IMainCellDto, INotebookDecorationRenderOptions, INotebookDocumentFilter, INotebookExclusiveDocumentFilter, INotebookKernel, NotebookCellsChangeType, TransientMetadata } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { INotebookEditorModelResolverService } from 'vs/workbench/contrib/notebook/common/notebookEditorModelResolverService';
 import { IMainNotebookController, INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
-import { IEditorGroup, IEditorGroupsService, preferredSideBySideGroupDirection } from 'vs/workbench/services/editor/common/editorGroupsService';
-import { IEditorService, SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
+import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IUriIdentityService } from 'vs/workbench/services/uriIdentity/common/uriIdentity';
 import { IWorkingCopyService } from 'vs/workbench/services/workingCopy/common/workingCopyService';
 import { ExtHostContext, ExtHostNotebookShape, IExtHostContext, INotebookCellStatusBarEntryDto, INotebookDocumentsAndEditorsDelta, INotebookDocumentShowOptions, INotebookEditorAddData, INotebookModelAddedData, MainContext, MainThreadNotebookShape, NotebookEditorRevealType, NotebookExtensionDescription } from '../common/extHost.protocol';
@@ -118,11 +117,10 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 
 	constructor(
 		extHostContext: IExtHostContext,
+		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 		@IWorkingCopyService private readonly _workingCopyService: IWorkingCopyService,
 		@INotebookService private _notebookService: INotebookService,
-		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@IEditorService private readonly _editorService: IEditorService,
-		@IEditorGroupsService private readonly _editorGroupsService: IEditorGroupsService,
 		@ILogService private readonly _logService: ILogService,
 		@INotebookCellStatusBarService private readonly _cellStatusBarService: INotebookCellStatusBarService,
 		@INotebookEditorModelResolverService private readonly _notebookModelResolverService: INotebookEditorModelResolverService,
@@ -160,7 +158,10 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 		if (!textModel) {
 			return false;
 		}
-		return textModel.applyEdits(modelVersionId, cellEdits, true, undefined, () => undefined, undefined);
+		if (textModel.versionId !== modelVersionId) {
+			return false;
+		}
+		return textModel.applyEdits(cellEdits, true, undefined, () => undefined, undefined);
 	}
 
 	private _isDeltaEmpty(delta: INotebookDocumentsAndEditorsDelta) {
@@ -353,8 +354,7 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 			this._proxy.$acceptModelSaved(e);
 		}));
 
-		const activeEditorPane = this._editorService.activeEditorPane as any | undefined;
-		const notebookEditor = activeEditorPane?.isNotebookEditor ? activeEditorPane.getControl() : undefined;
+		const notebookEditor = getNotebookEditorFromEditorPane(this._editorService.activeEditorPane);
 		this._updateState(notebookEditor);
 	}
 
@@ -366,9 +366,8 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 			}),
 		));
 
-		const activeEditorPane = this._editorService.activeEditorPane as any | undefined;
-		const notebookEditor = activeEditorPane?.isNotebookEditor ? activeEditorPane.getControl() : undefined;
-		this._updateState(notebookEditor);
+		const activeNotebookEditor = getNotebookEditorFromEditorPane(this._editorService.activeEditorPane);
+		this._updateState(activeNotebookEditor);
 	}
 
 	private _removeNotebookEditor(editors: IEditor[]) {
@@ -386,12 +385,8 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 	private async _updateState(focusedNotebookEditor?: IEditor) {
 		let activeEditor: string | null = null;
 
-		const activeEditorPane = this._editorService.activeEditorPane as any | undefined;
-		if (activeEditorPane?.isNotebookEditor) {
-			const notebookEditor = (activeEditorPane.getControl() as INotebookEditor);
-			activeEditor = notebookEditor && notebookEditor.hasModel() ? notebookEditor!.getId() : null;
-		}
-
+		const activeNotebookEditor = getNotebookEditorFromEditorPane(this._editorService.activeEditorPane);
+		activeEditor = activeNotebookEditor && activeNotebookEditor.hasModel() ? activeNotebookEditor.getId() : null;
 		const documentEditorsMap = new Map<string, IEditor>();
 
 		const editors = new Map<string, IEditor>();
@@ -403,12 +398,10 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 		});
 
 		const visibleEditorsMap = new Map<string, IEditor>();
-		this._editorService.visibleEditorPanes.forEach(editor => {
-			if ((editor as any).isNotebookEditor) {
-				const nbEditorWidget = (editor as any).getControl() as INotebookEditor;
-				if (nbEditorWidget && editors.has(nbEditorWidget.getId())) {
-					visibleEditorsMap.set(nbEditorWidget.getId(), nbEditorWidget);
-				}
+		this._editorService.visibleEditorPanes.forEach(editorPane => {
+			const nbEditorWidget = getNotebookEditorFromEditorPane(editorPane);
+			if (nbEditorWidget && editors.has(nbEditorWidget.getId())) {
+				visibleEditorsMap.set(nbEditorWidget.getId(), nbEditorWidget);
 			}
 		});
 
@@ -565,7 +558,7 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 
 	async $postMessage(editorId: string, forRendererId: string | undefined, value: any): Promise<boolean> {
 		const editor = this._notebookService.getNotebookEditor(editorId) as INotebookEditor | undefined;
-		if (editor?.isNotebookEditor) {
+		if (editor) {
 			editor.postMessage(forRendererId, value);
 			return true;
 		}
@@ -574,8 +567,8 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 	}
 
 	async $tryRevealRange(id: string, range: ICellRange, revealType: NotebookEditorRevealType) {
-		const editor = this._notebookService.listNotebookEditors().find(editor => editor.getId() === id);
-		if (editor && editor.isNotebookEditor) {
+		const editor = this._notebookService.listNotebookEditors().find(editor => editor.getId() === id) as INotebookEditor | undefined;
+		if (editor) {
 			const notebookEditor = editor as INotebookEditor;
 			if (!notebookEditor.hasModel()) {
 				return;
@@ -610,8 +603,8 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 	}
 
 	$trySetDecorations(id: string, range: ICellRange, key: string) {
-		const editor = this._notebookService.listNotebookEditors().find(editor => editor.getId() === id);
-		if (editor && editor.isNotebookEditor) {
+		const editor = this._notebookService.listNotebookEditors().find(editor => editor.getId() === id) as INotebookEditor | undefined;
+		if (editor) {
 			const notebookEditor = editor as INotebookEditor;
 			notebookEditor.setEditorDecorations(key, range);
 		}
@@ -652,7 +645,8 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 	}
 
 	async $tryShowNotebookDocument(resource: UriComponents, viewType: string, options: INotebookDocumentShowOptions): Promise<string> {
-		const editorOptions: ITextEditorOptions = {
+		const editorOptions = new NotebookEditorOptions({
+			cellSelections: options.selection && [options.selection],
 			preserveFocus: options.preserveFocus,
 			pinned: options.pinned,
 			// selection: options.selection,
@@ -660,36 +654,13 @@ export class MainThreadNotebooks extends Disposable implements MainThreadNoteboo
 			// but make sure to restore the editor to fix https://github.com/microsoft/vscode/issues/79633
 			activation: options.preserveFocus ? EditorActivation.RESTORE : undefined,
 			override: EditorOverride.DISABLED,
-		};
+		});
 
-		const columnArg = viewColumnToEditorGroup(this._editorGroupsService, options.position);
-
-		let group: IEditorGroup | undefined = undefined;
-
-		if (columnArg === SIDE_GROUP) {
-			const direction = preferredSideBySideGroupDirection(this._configurationService);
-
-			let neighbourGroup = this._editorGroupsService.findGroup({ direction });
-			if (!neighbourGroup) {
-				neighbourGroup = this._editorGroupsService.addGroup(this._editorGroupsService.activeGroup, direction);
-			}
-			group = neighbourGroup;
-		} else {
-			group = this._editorGroupsService.getGroup(viewColumnToEditorGroup(this._editorGroupsService, columnArg)) ?? this._editorGroupsService.activeGroup;
-		}
-
-		const input = this._editorService.createEditorInput({ resource: URI.revive(resource), options: editorOptions });
-
-		// TODO: handle options.selection
-		const editorPane = await this._editorService.openEditor(input, { ...options, override: viewType }, group);
-		const notebookEditor = (editorPane as unknown as { isNotebookEditor?: boolean })?.isNotebookEditor ? (editorPane!.getControl() as INotebookEditor) : undefined;
+		const input = NotebookEditorInput.create(this._instantiationService, URI.revive(resource), viewType);
+		const editorPane = await this._editorService.openEditor(input, editorOptions, options.position);
+		const notebookEditor = getNotebookEditorFromEditorPane(editorPane);
 
 		if (notebookEditor) {
-			if (notebookEditor.viewModel && options.selection && notebookEditor.viewModel.viewCells[options.selection.start]) {
-				const focusedCell = notebookEditor.viewModel.viewCells[options.selection.start];
-				notebookEditor.revealInCenterIfOutsideViewport(focusedCell);
-				notebookEditor.focusElement(focusedCell);
-			}
 			return notebookEditor.getId();
 		} else {
 			throw new Error(`Notebook Editor creation failure for documenet ${resource}`);

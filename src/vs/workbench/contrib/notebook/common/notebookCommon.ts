@@ -655,7 +655,6 @@ export interface INotebookTextModelBackup {
 
 export interface NotebookDocumentBackupData {
 	readonly viewType: string;
-	readonly name: string;
 	readonly backupId?: string;
 	readonly mtime?: number;
 }
@@ -682,7 +681,6 @@ export interface IEditor extends editorCommon.ICompositeCodeEditor {
 	readonly onDidChangeSelection: Event<void>;
 	getSelection(): ICellRange | undefined;
 	getSelections(): ICellRange[];
-	isNotebookEditor: boolean;
 	visibleRanges: ICellRange[];
 	uri?: URI;
 	textModel?: NotebookTextModel;

@@ -26,7 +26,7 @@ import { FileOperationEvent, IFileService, IFileStat, IResolveFileResult, FileCh
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { ModeServiceImpl } from 'vs/editor/common/services/modeServiceImpl';
 import { ModelServiceImpl } from 'vs/editor/common/services/modelServiceImpl';
-import { IResourceEncoding, ITextFileService, IReadTextFileOptions, ITextFileStreamContent } from 'vs/workbench/services/textfile/common/textfiles';
+import { IResourceEncoding, ITextFileService, IReadTextFileOptions, ITextFileStreamContent, IWriteTextFileOptions } from 'vs/workbench/services/textfile/common/textfiles';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { IHistoryService } from 'vs/workbench/services/history/common/history';
 import { IInstantiationService, ServiceIdentifier } from 'vs/platform/instantiation/common/instantiation';
@@ -173,6 +173,7 @@ export function workbenchInstantiationService(
 
 	instantiationService.stub(IWorkingCopyService, disposables.add(new TestWorkingCopyService()));
 	instantiationService.stub(IEnvironmentService, TestEnvironmentService);
+	instantiationService.stub(IWorkbenchEnvironmentService, TestEnvironmentService);
 	const contextKeyService = overrides?.contextKeyService ? overrides.contextKeyService(instantiationService) : instantiationService.createInstance(MockContextKeyService);
 	instantiationService.stub(IContextKeyService, contextKeyService);
 	instantiationService.stub(IProgressService, new TestProgressService());
@@ -254,7 +255,8 @@ export class TestServiceAccessor {
 }
 
 export class TestTextFileService extends BrowserTextFileService {
-	private resolveTextContentError!: FileOperationError | null;
+	private readStreamError: FileOperationError | undefined = undefined;
+	private writeError: FileOperationError | undefined = undefined;
 
 	constructor(
 		@IFileService protected fileService: IFileService,
@@ -297,14 +299,14 @@ export class TestTextFileService extends BrowserTextFileService {
 		);
 	}
 
-	setResolveTextContentErrorOnce(error: FileOperationError): void {
-		this.resolveTextContentError = error;
+	setReadStreamErrorOnce(error: FileOperationError): void {
+		this.readStreamError = error;
 	}
 
 	async readStream(resource: URI, options?: IReadTextFileOptions): Promise<ITextFileStreamContent> {
-		if (this.resolveTextContentError) {
-			const error = this.resolveTextContentError;
-			this.resolveTextContentError = null;
+		if (this.readStreamError) {
+			const error = this.readStreamError;
+			this.readStreamError = undefined;
 
 			throw error;
 		}
@@ -320,6 +322,21 @@ export class TestTextFileService extends BrowserTextFileService {
 			value: await createTextBufferFactoryFromStream(content.value),
 			size: 10
 		};
+	}
+
+	setWriteErrorOnce(error: FileOperationError): void {
+		this.writeError = error;
+	}
+
+	async write(resource: URI, value: string | ITextSnapshot, options?: IWriteTextFileOptions): Promise<IFileStatWithMetadata> {
+		if (this.writeError) {
+			const error = this.writeError;
+			this.writeError = undefined;
+
+			throw error;
+		}
+
+		return super.write(resource, value, options);
 	}
 }
 
@@ -501,7 +518,6 @@ export class TestLayoutService implements IWorkbenchLayoutService {
 	addClass(_clazz: string): void { }
 	removeClass(_clazz: string): void { }
 	getMaximumEditorDimensions(): Dimension { throw new Error('not implemented'); }
-	getWorkbenchContainer(): HTMLElement { throw new Error('not implemented'); }
 	toggleZenMode(): void { }
 	isEditorLayoutCentered(): boolean { return false; }
 	centerEditorLayout(_active: boolean): void { }
@@ -1371,6 +1387,14 @@ export class TestEditorPart extends EditorPart {
 			delete globalMemento[key];
 		}
 	}
+}
+
+export function createEditorPart(instantiationService: IInstantiationService, disposables: DisposableStore): TestEditorPart {
+	const part = disposables.add(instantiationService.createInstance(TestEditorPart));
+	part.create(document.createElement('div'));
+	part.layout(1080, 800);
+
+	return part;
 }
 
 export class TestListService implements IListService {
