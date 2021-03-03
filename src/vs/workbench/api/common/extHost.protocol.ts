@@ -58,7 +58,7 @@ import { IAccessibilityInformation } from 'vs/platform/accessibility/common/acce
 import { IExtensionIdWithVersion } from 'vs/platform/userDataSync/common/extensionsStorageSync';
 import { InternalTestItem, ITestState, RunTestForProviderRequest, RunTestsRequest, TestIdWithProvider, TestsDiff, ISerializedTestResults } from 'vs/workbench/contrib/testing/common/testCollection';
 import { CandidatePort } from 'vs/workbench/services/remote/common/remoteExplorerService';
-import { WorkspaceTrustStateChangeEvent } from 'vs/platform/workspace/common/workspaceTrust';
+import { WorkspaceTrustRequest, WorkspaceTrustStateChangeEvent } from 'vs/platform/workspace/common/workspaceTrust';
 import { ISerializableEnvironmentVariableCollection } from 'vs/workbench/contrib/terminal/common/environmentVariable';
 import { IShellLaunchConfig, ITerminalDimensions, ITerminalLaunchError } from 'vs/platform/terminal/common/terminal';
 
@@ -459,6 +459,7 @@ export interface TerminalLaunchConfig {
 	hideFromUser?: boolean;
 	isExtensionTerminal?: boolean;
 	isFeatureTerminal?: boolean;
+	isExtensionOwnedTerminal?: boolean;
 }
 
 export interface MainThreadTerminalServiceShape extends IDisposable {
@@ -833,7 +834,7 @@ export interface MainThreadWorkspaceShape extends IDisposable {
 	$saveAll(includeUntitled?: boolean): Promise<boolean>;
 	$updateWorkspaceFolders(extensionName: string, index: number, deleteCount: number, workspaceFoldersToAdd: { uri: UriComponents, name?: string; }[]): Promise<void>;
 	$resolveProxy(url: string): Promise<string | undefined>;
-	$requireWorkspaceTrust(modal?: boolean): Promise<WorkspaceTrustState>
+	$requireWorkspaceTrust(request?: WorkspaceTrustRequest): Promise<WorkspaceTrustState>;
 }
 
 export interface IFileChangeDto {
@@ -1536,6 +1537,11 @@ export interface ExtHostQuickOpenShape {
 	$onDidHide(sessionId: number): void;
 }
 
+export interface ExtHostTelemetryShape {
+	$initializeTelemetryEnabled(enabled: boolean): void;
+	$onDidChangeTelemetryEnabled(enabled: boolean): void;
+}
+
 export interface IShellLaunchConfigDto {
 	name?: string;
 	executable?: string;
@@ -1962,4 +1968,5 @@ export const ExtHostContext = {
 	ExtHostAuthentication: createMainId<ExtHostAuthenticationShape>('ExtHostAuthentication'),
 	ExtHostTimeline: createMainId<ExtHostTimelineShape>('ExtHostTimeline'),
 	ExtHostTesting: createMainId<ExtHostTestingShape>('ExtHostTesting'),
+	ExtHostTelemetry: createMainId<ExtHostTelemetryShape>('ExtHostTelemetry'),
 };
