@@ -36,13 +36,14 @@ class WebviewMarkdownRenderer extends Disposable implements IMarkdownRenderStrat
 	) {
 		super();
 	}
+
 	update(): void {
 		this.notebookEditor.createMarkdownPreview(this.viewCell);
 	}
 }
 
 class BuiltinMarkdownRenderer extends Disposable implements IMarkdownRenderStrategy {
-	private readonly localDisposables = new DisposableStore();
+	private readonly localDisposables = this._register(new DisposableStore());
 
 	constructor(
 		private readonly notebookEditor: IActiveNotebookEditor,
@@ -60,11 +61,6 @@ class BuiltinMarkdownRenderer extends Disposable implements IMarkdownRenderStrat
 		})).startObserving();
 	}
 
-	dispose(): void {
-		this.localDisposables.dispose();
-		super.dispose();
-	}
-
 	update(): void {
 
 		const markdownRenderer = this.viewCell.getMarkdownRenderer();
@@ -78,7 +74,6 @@ class BuiltinMarkdownRenderer extends Disposable implements IMarkdownRenderStrat
 			this.viewCell.renderedMarkdownHeight = this.container.clientHeight;
 			this.relayoutCell();
 		} else {
-			// first time, readonly mode
 			this.localDisposables.clear();
 			this.localDisposables.add(markdownRenderer.onDidRenderAsync(() => {
 				this.viewCell.renderedMarkdownHeight = this.container.clientHeight;
@@ -111,7 +106,7 @@ export class StatefulMarkdownCell extends Disposable {
 	private markdownContainer: HTMLElement;
 	private editorPart: HTMLElement;
 
-	private localDisposables = new DisposableStore();
+	private readonly localDisposables = new DisposableStore();
 	private foldingState: CellFoldingState;
 	private activeCellRunPlaceholder: IDisposable | null = null;
 	private useRenderer: boolean = false;
@@ -261,6 +256,7 @@ export class StatefulMarkdownCell extends Disposable {
 	}
 
 	dispose() {
+		this.notebookEditor.removeMarkdownPreview(this.viewCell);
 		this.localDisposables.dispose();
 		this.viewCell.detachTextEditor();
 		super.dispose();
