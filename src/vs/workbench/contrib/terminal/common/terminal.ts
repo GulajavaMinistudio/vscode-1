@@ -24,6 +24,9 @@ export const KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE_KEY = 'terminalShellType';
 /** A context key that is set to the detected shell for the most recently active terminal, this is set to the last known value when no terminals exist. */
 export const KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE = new RawContextKey<string>(KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE_KEY, undefined, { type: 'string', description: nls.localize('terminalShellTypeContextKey', "The shell type of the active terminal") });
 
+export const KEYBINDING_CONTEXT_IPAD_KEY = 'isIPad';
+export const KEYBINDING_CONTEXT_IPAD = new RawContextKey(KEYBINDING_CONTEXT_IPAD_KEY, false, nls.localize(KEYBINDING_CONTEXT_IPAD_KEY, 'Whether the device is an ipad'));
+
 export const KEYBINDING_CONTEXT_TERMINAL_ALT_BUFFER_ACTIVE = new RawContextKey<boolean>('terminalAltBufferActive', false, true);
 
 /** A context key that is set when the integrated terminal does not have focus. */
@@ -54,6 +57,8 @@ export const IS_WORKSPACE_SHELL_ALLOWED_STORAGE_KEY = 'terminal.integrated.isWor
 export const NEVER_MEASURE_RENDER_TIME_STORAGE_KEY = 'terminal.integrated.neverMeasureRenderTime';
 
 export const TERMINAL_CREATION_COMMANDS = ['workbench.action.terminal.toggleTerminal', 'workbench.action.terminal.new', 'workbench.action.togglePanel', 'workbench.action.terminal.focus'];
+
+export const SUGGESTED_RENDERER_TYPE = 'terminal.integrated.suggestedRendererType';
 
 export const TerminalCursorStyle = {
 	BLOCK: 'block',
@@ -140,7 +145,6 @@ export interface ITerminalConfiguration {
 	localEchoExcludePrograms: ReadonlyArray<string>;
 	localEchoStyle: 'bold' | 'dim' | 'italic' | 'underlined' | 'inverted' | string;
 	enablePersistentSessions: boolean;
-	flowControl: boolean;
 }
 
 export const DEFAULT_LOCAL_ECHO_EXCLUDE: ReadonlyArray<string> = ['vim', 'vi', 'nano', 'tmux'];
@@ -246,10 +250,13 @@ export interface ITerminalProcessManager extends IDisposable {
 	readonly environmentVariableInfo: IEnvironmentVariableInfo | undefined;
 	readonly persistentProcessId: number | undefined;
 	readonly shouldPersist: boolean;
+	readonly isDisconnected: boolean;
 	/** Whether the process has had data written to it yet. */
 	readonly hasWrittenData: boolean;
 
 	readonly onPtyDisconnect: Event<void>;
+	readonly onPtyReconnect: Event<void>;
+
 	readonly onProcessReady: Event<void>;
 	readonly onBeforeProcessData: Event<IBeforeProcessDataEvent>;
 	readonly onProcessData: Event<IProcessDataEvent>;
