@@ -151,7 +151,7 @@ export class TerminalService implements ITerminalService {
 			if (e.affectsConfiguration('terminal.integrated.profiles.windows') ||
 				e.affectsConfiguration('terminal.integrated.profiles.osx') ||
 				e.affectsConfiguration('terminal.integrated.profiles.linux') ||
-				e.affectsConfiguration('terminal.integrated.detectWslProfiles')) {
+				e.affectsConfiguration('terminal.integrated.quickLaunchWslProfiles')) {
 				this._onProfilesConfigChanged.fire();
 			}
 		});
@@ -319,11 +319,11 @@ export class TerminalService implements ITerminalService {
 	private _terminalProfileObjectEqual(one?: ITerminalProfileObject, two?: ITerminalProfileObject): boolean {
 		if (one === null && two === null) {
 			return true;
-		} else if ((one as ITerminalExecutable).path && (two as ITerminalExecutable).path) {
+		} else if ((one as ITerminalExecutable).pathOrPaths && (two as ITerminalExecutable).pathOrPaths) {
 			const oneExec = (one as ITerminalExecutable);
 			const twoExec = (two as ITerminalExecutable);
-			return ((Array.isArray(oneExec.path) && Array.isArray(twoExec.path) && oneExec.path.length === twoExec.path.length && oneExec.path.every((p, index) => p === twoExec.path[index])) ||
-				(oneExec.path === twoExec.path)
+			return ((Array.isArray(oneExec.pathOrPaths) && Array.isArray(twoExec.pathOrPaths) && oneExec.pathOrPaths.length === twoExec.pathOrPaths.length && oneExec.pathOrPaths.every((p, index) => p === twoExec.pathOrPaths[index])) ||
+				(oneExec.pathOrPaths === twoExec.pathOrPaths)
 			) && ((Array.isArray(oneExec.args) && Array.isArray(twoExec.args) && oneExec.args?.every((a, index) => a === twoExec.args?.[index])) ||
 				(oneExec.args === twoExec.args)
 				);
@@ -559,16 +559,10 @@ export class TerminalService implements ITerminalService {
 	public async initializeTerminals(): Promise<void> {
 		if (this._remoteTerminalsInitPromise) {
 			await this._remoteTerminalsInitPromise;
-
-			if (!this.terminalTabs.length) {
-				this.createTerminal();
-			}
 		} else if (this._localTerminalsInitPromise) {
 			await this._localTerminalsInitPromise;
-			if (!this.terminalTabs.length) {
-				this.createTerminal();
-			}
-		} else if (!this.terminalTabs.length) {
+		}
+		if (this.terminalTabs.length === 0 && this.isProcessSupportRegistered) {
 			this.createTerminal();
 		}
 	}
@@ -828,6 +822,18 @@ export class TerminalService implements ITerminalService {
 			placeHolder: nls.localize('terminal.integrated.chooseWindowsShell', "Select your preferred terminal shell, you can change this later in your settings")
 		};
 		const quickPickItems = profiles.map((p): IQuickPickItem => {
+			if (p.args) {
+				if (typeof p.args === 'string') {
+					return { label: p.profileName, description: `${p.path} ${p.args}` };
+				}
+				const argsString = p.args.map(e => {
+					if (e.includes(' ')) {
+						return `"${e.replace('/"/g', '\\"')}"`;
+					}
+					return e;
+				}).join(' ');
+				return { label: p.profileName, description: `${p.path} ${argsString}` };
+			}
 			return { label: p.profileName, description: p.path };
 		});
 		const value = await this._quickInputService.pick(quickPickItems, options);

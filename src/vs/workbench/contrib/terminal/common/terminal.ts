@@ -79,6 +79,12 @@ export const SUGGESTIONS_FONT_WEIGHT = ['normal', 'bold', '100', '200', '300', '
 
 export type FontWeight = 'normal' | 'bold' | number;
 
+export interface ITerminalProfiles {
+	linux: { [key: string]: ITerminalProfileObject };
+	osx: { [key: string]: ITerminalProfileObject };
+	windows: { [key: string]: ITerminalProfileObject };
+}
+
 export interface ITerminalConfiguration {
 	shell: {
 		linux: string | null;
@@ -95,12 +101,8 @@ export interface ITerminalConfiguration {
 		osx: string[];
 		windows: string[];
 	};
-	profiles: {
-		linux: Map<ProfileName, ITerminalProfileObject>;
-		osx: Map<ProfileName, ITerminalProfileObject>;
-		windows: Map<ProfileName, ITerminalProfileObject>;
-	};
-	detectWslProfiles: boolean;
+	profiles: ITerminalProfiles;
+	quickLaunchWslProfiles: boolean;
 	altClickMovesCursor: boolean;
 	macOptionIsMeta: boolean;
 	macOptionClickForcesSelection: boolean;
@@ -231,12 +233,12 @@ export interface ITerminalProfile {
 }
 
 export const enum ProfileSource {
-	'Git Bash',
-	'PowerShell'
+	GitBash = 'Git Bash',
+	Pwsh = 'PowerShell'
 }
 
 export interface ITerminalExecutable {
-	path: string | string[];
+	pathOrPaths: string | string[];
 	args?: string | string[] | undefined;
 }
 
@@ -366,6 +368,8 @@ export enum TitleEventSource {
 	/** From the VT sequence */
 	Sequence
 }
+
+export const QUICK_LAUNCH_PROFILE_CHOICE = 'workbench.action.terminal.profile.choice';
 
 export const enum TERMINAL_COMMAND_ID {
 	FIND_NEXT = 'workbench.action.terminal.findNext',
