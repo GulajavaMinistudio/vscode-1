@@ -8,6 +8,32 @@ import { localize } from 'vs/nls';
 import { EDITOR_FONT_DEFAULTS } from 'vs/editor/common/config/editorOptions';
 import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT, TerminalCursorStyle, DEFAULT_COMMANDS_TO_SKIP_SHELL, SUGGESTIONS_FONT_WEIGHT, MINIMUM_FONT_WEIGHT, MAXIMUM_FONT_WEIGHT, DEFAULT_LOCAL_ECHO_EXCLUDE } from 'vs/workbench/contrib/terminal/common/terminal';
 import { isMacintosh, isWindows, Platform } from 'vs/base/common/platform';
+import { IJSONSchema } from 'vs/base/common/jsonSchema';
+
+const terminalProfileSchema: IJSONSchema = {
+	type: 'object',
+	required: ['path'],
+	properties: {
+		path: {
+			description: localize('terminalProfile.path', 'A single path to a shell executable or an array of paths that will be used as fallbacks when one fails.'),
+			type: ['string', 'array'],
+			items: {
+				type: 'string'
+			}
+		},
+		args: {
+			description: localize('terminalProfile.args', 'An optional set of arguments to run the shell executable with.'),
+			type: 'array',
+			items: {
+				type: 'string'
+			}
+		},
+		overrideName: {
+			description: localize('terminalProfile.overrideName', 'An optional name for the terminal which will override the detected one.'),
+			type: 'string'
+		}
+	}
+};
 
 export const terminalConfiguration: IConfigurationNode = {
 	id: 'terminal',
@@ -86,7 +112,7 @@ export const terminalConfiguration: IConfigurationNode = {
 					key: 'terminal.integrated.profiles.windows',
 					comment: ['{0}, {1}, and {2} are the `source`, `path` and optional `args` settings keys']
 				},
-				"The windows shell profiles to select from when creating a new terminal via the terminal dropdown. Set to null to exclude them, use the {0} property to use the default detected configuration. Or, set the {1} and optional {2}", '`source`', '`path`', '`args`.'
+				"The Windows profiles to present when creating a new terminal via the terminal dropdown. Set to null to exclude them, use the {0} property to use the default detected configuration. Or, set the {1} and optional {2}", '`source`', '`path`', '`args`.'
 			),
 			type: 'object',
 			default: {
@@ -104,6 +130,25 @@ export const terminalConfiguration: IConfigurationNode = {
 					source: 'Git Bash'
 				}
 			},
+			additionalProperties: {
+				'anyOf': [
+					{
+						type: 'object',
+						required: ['source'],
+						properties: {
+							source: {
+								description: localize('terminalProfile.windowsSource', 'A profile source that will auto detect the paths to the shell.'),
+								enum: ['PowerShell', 'Git Bash']
+							},
+							overrideName: {
+								description: localize('terminalProfile.overrideName', 'An optional name for the terminal which will override the detected one.'),
+								type: 'string'
+							}
+						}
+					},
+					terminalProfileSchema
+				]
+			}
 		},
 		'terminal.integrated.profiles.osx': {
 			markdownDescription: localize(
@@ -111,7 +156,7 @@ export const terminalConfiguration: IConfigurationNode = {
 					key: 'terminal.integrated.profile.osx',
 					comment: ['{0} and {1} are the `path` and optional `args` settings keys']
 				},
-				"The osx shell profiles to select from when creating a new terminal via the terminal dropdown. When set, these will override the default detected profiles. They are comprised of a {0} and optional {1}", '`path`', '`args`.'
+				"The macOS profiles to present when creating a new terminal via the terminal dropdown. When set, these will override the default detected profiles. They are comprised of a {0} and optional {1}", '`path`', '`args`.'
 			),
 			type: 'object',
 			default: {
@@ -128,6 +173,7 @@ export const terminalConfiguration: IConfigurationNode = {
 					path: 'tmux'
 				}
 			},
+			additionalProperties: terminalProfileSchema
 		},
 		'terminal.integrated.profiles.linux': {
 			markdownDescription: localize(
@@ -135,7 +181,7 @@ export const terminalConfiguration: IConfigurationNode = {
 					key: 'terminal.integrated.profile.linux',
 					comment: ['{0} and {1} are the `path` and optional `args` settings keys']
 				},
-				"The osx shell profiles to select from when creating a new terminal via the terminal dropdown. When set, these will override the default detected profiles. They are comprised of a {0} and optional {1}", '`path`', '`args`.'
+				"The Linux profiles to present when creating a new terminal via the terminal dropdown. When set, these will override the default detected profiles. They are comprised of a {0} and optional {1}", '`path`', '`args`.'
 			),
 			type: 'object',
 			default: {
@@ -151,7 +197,8 @@ export const terminalConfiguration: IConfigurationNode = {
 				'tmux': {
 					path: 'tmux'
 				}
-			}
+			},
+			additionalProperties: terminalProfileSchema
 		},
 		'terminal.integrated.showQuickLaunchWslProfiles': {
 			description: localize('terminal.integrated.showQuickLaunchWslProfiles', 'Controls whether or not WSL distros are shown in the quick launch dropdown'),

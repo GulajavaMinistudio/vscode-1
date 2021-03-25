@@ -68,7 +68,7 @@ export const NOTEBOOK_INTERRUPTIBLE_KERNEL = new RawContextKey<boolean>('noteboo
 //#endregion
 
 //#region Shared commands
-export const EXPAND_CELL_CONTENT_COMMAND_ID = 'notebook.cell.expandCellContent';
+export const EXPAND_CELL_INPUT_COMMAND_ID = 'notebook.cell.expandCellInput';
 export const EXECUTE_CELL_COMMAND_ID = 'notebook.cell.execute';
 
 //#endregion
@@ -931,4 +931,27 @@ export function expandCellRangesWithHiddenCells(editor: INotebookEditor, viewMod
 	});
 
 	return reduceRanges(modelRanges);
+}
+
+/**
+ * Return a set of ranges for the cells matching the given predicate
+ */
+export function getRanges(cells: ICellViewModel[], included: (cell: ICellViewModel) => boolean): ICellRange[] {
+	const ranges: ICellRange[] = [];
+	let currentRange: ICellRange | undefined;
+
+	cells.forEach((cell, idx) => {
+		if (included(cell)) {
+			if (!currentRange) {
+				currentRange = { start: idx, end: idx + 1 };
+				ranges.push(currentRange);
+			} else {
+				currentRange.end = idx + 1;
+			}
+		} else {
+			currentRange = undefined;
+		}
+	});
+
+	return ranges;
 }
