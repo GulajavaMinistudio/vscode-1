@@ -102,7 +102,7 @@ export interface ITerminalConfiguration {
 		windows: string[];
 	};
 	profiles: ITerminalProfiles;
-	showQuickLaunchWslProfiles: boolean;
+	displayDetectedWslProfiles: boolean;
 	altClickMovesCursor: boolean;
 	macOptionIsMeta: boolean;
 	macOptionClickForcesSelection: boolean;
@@ -237,7 +237,7 @@ export interface ITerminalProfile {
 	isAutoDetected?: boolean;
 	isWorkspaceProfile?: boolean;
 	args?: string | string[] | undefined;
-	overrideName?: string;
+	overrideName?: boolean;
 }
 
 export const enum ProfileSource {
@@ -249,13 +249,13 @@ export interface ITerminalExecutable {
 	path: string | string[];
 	args?: string | string[] | undefined;
 	isAutoDetected?: boolean;
-	overrideName?: string;
+	overrideName?: boolean;
 }
 
 export interface ITerminalProfileSource {
 	source: ProfileSource;
 	isAutoDetected?: boolean;
-	overrideName?: string;
+	overrideName?: boolean;
 }
 
 export type ITerminalProfileObject = ITerminalExecutable | ITerminalProfileSource | null;
