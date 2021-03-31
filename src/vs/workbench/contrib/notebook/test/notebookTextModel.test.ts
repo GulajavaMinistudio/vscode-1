@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
+import { Range } from 'vs/editor/common/core/range';
 import { CellKind, CellEditType, NotebookTextModelChangedEvent, SelectionStateType } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { withTestNotebook, TestCell, setupInstantiationService } from 'vs/workbench/contrib/notebook/test/testNotebookEditor';
 import { IUndoRedoService } from 'vs/platform/undoRedo/common/undoRedo';
@@ -326,9 +327,9 @@ suite('NotebookTextModel', () => {
 				assert.strictEqual(textModel.cells[1].getValue(), 'var e = 5;');
 				assert.strictEqual(textModel.cells[2].getValue(), 'var c = 3;');
 
-				assert.notEqual(changeEvent, undefined);
+				assert.notStrictEqual(changeEvent, undefined);
 				assert.strictEqual(changeEvent!.rawEvents.length, 2);
-				assert.deepEqual(changeEvent!.endSelectionState?.selections, [{ start: 0, end: 1 }]);
+				assert.deepStrictEqual(changeEvent!.endSelectionState?.selections, [{ start: 0, end: 1 }]);
 				assert.strictEqual(textModel.versionId, version + 1);
 				eventListener.dispose();
 			}
@@ -360,9 +361,9 @@ suite('NotebookTextModel', () => {
 					}
 				], true, undefined, () => ({ kind: SelectionStateType.Index, focus: { start: 0, end: 1 }, selections: [{ start: 0, end: 1 }] }), undefined);
 
-				assert.notEqual(changeEvent, undefined);
+				assert.notStrictEqual(changeEvent, undefined);
 				assert.strictEqual(changeEvent!.rawEvents.length, 2);
-				assert.deepEqual(changeEvent!.endSelectionState?.selections, [{ start: 0, end: 1 }]);
+				assert.deepStrictEqual(changeEvent!.endSelectionState?.selections, [{ start: 0, end: 1 }]);
 				assert.strictEqual(textModel.versionId, version + 1);
 				eventListener.dispose();
 			}
@@ -472,6 +473,19 @@ suite('NotebookTextModel', () => {
 				assert.ok(success);
 				assert.ok(event === undefined);
 			}
+		});
+	});
+
+	test('Cell text model update increases notebook model version id #119561', function () {
+		withTestNotebook([
+			['var a = 1;', 'javascript', CellKind.Code, [], { editable: true }],
+			['var b = 2;', 'javascript', CellKind.Code, [], { editable: true }]
+		], async (editor) => {
+			const textModel = await editor.viewModel.viewCells[0].resolveTextModel();
+			assert.ok(textModel !== undefined);
+			assert.strictEqual(editor.viewModel.getVersionId(), 0);
+			textModel.applyEdits([{ range: new Range(1, 1, 1, 1), text: 'x' }], true);
+			assert.strictEqual(editor.viewModel.getVersionId(), 1);
 		});
 	});
 });

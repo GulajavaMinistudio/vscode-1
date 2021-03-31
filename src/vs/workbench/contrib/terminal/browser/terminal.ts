@@ -155,7 +155,7 @@ export interface ITerminalService {
 	 */
 	registerLinkProvider(linkProvider: ITerminalExternalLinkProvider): IDisposable;
 
-	selectDefaultProfile(): Promise<void>;
+	showProfileQuickPick(type: 'setDefault' | 'createInstance'): Promise<void>;
 
 	/**
 	 * Gets the detected terminal profiles for the platform
@@ -457,6 +457,11 @@ export interface ITerminalInstance {
 	 * Focuses and pastes the contents of the clipboard into the terminal instance.
 	 */
 	paste(): Promise<void>;
+
+	/**
+	 * Focuses and pastes the contents of the selection clipboard into the terminal instance.
+	 */
+	pasteSelection(): Promise<void>;
 
 	/**
 	 * Send text to the terminal instance. The text is written to the stdin of the underlying pty

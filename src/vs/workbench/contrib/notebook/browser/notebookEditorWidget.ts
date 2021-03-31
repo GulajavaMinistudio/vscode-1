@@ -61,7 +61,7 @@ import { NotebookEventDispatcher, NotebookLayoutChangedEvent } from 'vs/workbenc
 import { MarkdownCellViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/markdownCellViewModel';
 import { CellViewModel, IModelDecorationsChangeAccessor, INotebookEditorViewState, NotebookViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/notebookViewModel';
 import { NotebookTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookTextModel';
-import { CellKind, CellToolbarLocKey, ICellRange, INotebookKernel, SelectionStateType, ShowCellStatusBarKey } from 'vs/workbench/contrib/notebook/common/notebookCommon';
+import { CellKind, CellToolbarLocKey, ExperimentalUseMarkdownRenderer, ICellRange, INotebookKernel, SelectionStateType, ShowCellStatusBarKey } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { NotebookProviderInfo } from 'vs/workbench/contrib/notebook/common/notebookProvider';
 import { INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
 import { editorGutterModifiedBackground } from 'vs/workbench/contrib/scm/browser/dirtydiffDecorator';
@@ -73,6 +73,7 @@ import { ToolBar } from 'vs/base/browser/ui/toolbar/toolbar';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { ITASExperimentService } from 'vs/workbench/services/experiment/common/experimentService';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { isWeb } from 'vs/base/common/platform';
 
 const $ = DOM.$;
 
@@ -342,7 +343,7 @@ export class NotebookEditorWidget extends Disposable implements INotebookEditor 
 		super();
 		this.isEmbedded = creationOptions.isEmbedded || false;
 
-		this.useRenderer = (this.configurationService.getValue<boolean>('notebook.experimental.useMarkdownRenderer') ?? false /*!isWeb*/) && !accessibilityService.isScreenReaderOptimized();
+		this.useRenderer = !isWeb && !!this.configurationService.getValue<boolean>(ExperimentalUseMarkdownRenderer) && !accessibilityService.isScreenReaderOptimized();
 
 		this._overlayContainer = document.createElement('div');
 		this.scopedContextKeyService = contextKeyService.createScoped(this._overlayContainer);
@@ -1994,6 +1995,20 @@ export class NotebookEditorWidget extends Disposable implements INotebookEditor 
 			aria.alert(`Cell ${this._notebookViewModel?.getCellIndex(cell)}, ${position} `);
 		}
 	}
+
+	toggleNotebookCellSelection(cell: ICellViewModel): void {
+		const currentSelections = this._list.getSelectedElements();
+
+		const isSelected = currentSelections.includes(cell);
+		if (isSelected) {
+			// Deselect
+			this._list.selectElements(currentSelections.filter(current => current !== cell));
+		} else {
+			// Add to selection
+			this._list.selectElements([...currentSelections, cell]);
+		}
+	}
+
 	focusNotebookCell(cell: ICellViewModel, focusItem: 'editor' | 'container' | 'output', options?: IFocusNotebookCellOptions) {
 		if (this._isDisposed) {
 			return;
