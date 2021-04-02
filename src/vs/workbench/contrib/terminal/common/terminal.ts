@@ -306,6 +306,7 @@ export interface ITerminalProcessManager extends IDisposable {
 	setDimensions(cols: number, rows: number, sync: false): Promise<void>;
 	setDimensions(cols: number, rows: number, sync: true): void;
 	acknowledgeDataEvent(charCount: number): void;
+	processBinary(data: string): void;
 
 	getInitialCwd(): Promise<string>;
 	getCwd(): Promise<string>;
@@ -345,6 +346,7 @@ export interface ITerminalProcessExtHostProxy extends IDisposable {
 	emitLatency(latency: number): void;
 
 	onInput: Event<string>;
+	onBinary: Event<string>;
 	onResize: Event<{ cols: number, rows: number }>;
 	onAcknowledgeDataEvent: Event<number>;
 	onShutdown: Event<boolean>;
