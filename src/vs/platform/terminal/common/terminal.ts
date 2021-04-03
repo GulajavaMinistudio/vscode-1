@@ -96,7 +96,7 @@ export interface IOffProcessTerminalService {
 	listProcesses(reduceGraceTime?: boolean): Promise<IProcessDetails[]>;
 	setTerminalLayoutInfo(layoutInfo?: ITerminalsLayoutInfoById): Promise<void>;
 	getTerminalLayoutInfo(): Promise<ITerminalsLayoutInfo | undefined>;
-	reduceConnectionGraceTime(): void;
+	reduceConnectionGraceTime(): Promise<void>;
 }
 
 export const ILocalTerminalService = createDecorator<ILocalTerminalService>('localTerminalService');
@@ -154,13 +154,13 @@ export interface IPtyService {
 	getCwd(id: number): Promise<string>;
 	getLatency(id: number): Promise<number>;
 	acknowledgeDataEvent(id: number, charCount: number): Promise<void>;
-	processBinary(id: number, data: string): void;
+	processBinary(id: number, data: string): Promise<void>;
 	/** Confirm the process is _not_ an orphan. */
 	orphanQuestionReply(id: number): Promise<void>;
 
 	setTerminalLayoutInfo(args: ISetTerminalLayoutInfoArgs): Promise<void>;
 	getTerminalLayoutInfo(args: IGetTerminalLayoutInfoArgs): Promise<ITerminalsLayoutInfo | undefined>;
-	reduceConnectionGraceTime(): void;
+	reduceConnectionGraceTime(): Promise<void>;
 }
 
 export enum HeartbeatConstants {
@@ -347,7 +347,7 @@ export interface ITerminalChildProcess {
 	 */
 	shutdown(immediate: boolean): void;
 	input(data: string): void;
-	processBinary(data: string): void;
+	processBinary(data: string): Promise<void>;
 	resize(cols: number, rows: number): void;
 
 	/**

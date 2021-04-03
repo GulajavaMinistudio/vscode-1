@@ -137,6 +137,7 @@ export interface IGenericCellViewModel {
 }
 
 export interface IDisplayOutputLayoutUpdateRequest {
+	readonly cell: IGenericCellViewModel;
 	output: IDisplayOutputViewModel;
 	cellTop: number;
 	outputOffset: number;
@@ -752,6 +753,7 @@ export function isCodeCellRenderTemplate(templateData: BaseCellRenderTemplate): 
 }
 
 export interface IOutputTransformContribution {
+	getType(): RenderOutputType;
 	getMimetypes(): string[];
 	/**
 	 * Dispose this contribution.
