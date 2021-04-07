@@ -61,6 +61,7 @@ async function detectAvailableWindowsProfiles(configuredProfilesOnly: boolean, f
 		detectedProfiles.set('Command Prompt',
 			{
 				path: [`${system32Path}\\cmd.exe`],
+				icon: 'terminal-cmd',
 				isAutoDetected: true
 			},
 		);
@@ -90,6 +91,7 @@ async function transformToTerminalProfiles(entries: IterableIterator<[string, IT
 		if (profile === null) { continue; }
 		let originalPaths: string[];
 		let args: string[] | string | undefined;
+		let icon: string | undefined;
 		if ('source' in profile) {
 			const source = profileSources?.get(profile.source);
 			if (!source) {
@@ -99,19 +101,22 @@ async function transformToTerminalProfiles(entries: IterableIterator<[string, IT
 
 			// if there are configured args, override the default ones
 			args = profile.args || source.args;
+			icon = profile.icon || source.icon;
 		} else {
 			originalPaths = Array.isArray(profile.path) ? profile.path : [profile.path];
 			args = platform.isWindows ? profile.args : Array.isArray(profile.args) ? profile.args : undefined;
+			icon = profile.icon;
 		}
 
 		const paths = originalPaths.slice();
 
 		for (let i = 0; i < paths.length; i++) {
-			paths[i] = variableResolver?.resolve(workspaceFolder, paths[i]) || paths[i];
+			paths[i] = await variableResolver?.resolveAsync(workspaceFolder, paths[i]) || paths[i];
 		}
 		const validatedProfile = await validateProfilePaths(profileName, paths, fsProvider, args, profile.overrideName, profile.isAutoDetected, logService);
 		if (validatedProfile) {
 			validatedProfile.isAutoDetected = profile.isAutoDetected;
+			validatedProfile.icon = icon;
 			resultProfiles.push(validatedProfile);
 		} else {
 			logService?.trace('profile not validated', profileName, originalPaths);
@@ -150,7 +155,8 @@ async function initializeWindowsProfiles(): Promise<void> {
 
 	profileSources.set('PowerShell', {
 		profileName: 'PowerShell',
-		paths: await getPowershellPaths()
+		paths: await getPowershellPaths(),
+		icon: 'terminal-powershell'
 	});
 }
 
@@ -168,7 +174,7 @@ async function getWslProfiles(wslPath: string, useWslProfiles?: boolean): Promis
 	if (useWslProfiles) {
 		const distroOutput = await new Promise<string>((resolve, reject) => {
 			// wsl.exe output is encoded in utf16le (ie. A -> 0x4100)
-			cp.exec('wsl.exe -l', { encoding: 'utf16le' }, (err, stdout) => {
+			cp.exec('wsl.exe -l -q', { encoding: 'utf16le' }, (err, stdout) => {
 				if (err) {
 					return reject('Problem occurred when getting wsl distros');
 				}
@@ -178,12 +184,7 @@ async function getWslProfiles(wslPath: string, useWslProfiles?: boolean): Promis
 		if (distroOutput) {
 			const regex = new RegExp(/[\r?\n]/);
 			const distroNames = distroOutput.split(regex).filter(t => t.trim().length > 0 && t !== '');
-			// don't need the Windows Subsystem for Linux Distributions header
-			distroNames.shift();
 			for (let distroName of distroNames) {
-				// Remove default from distro name
-				distroName = distroName.replace(/ \(Default\)$/, '');
-
 				// Skip empty lines
 				if (distroName === '') {
 					continue;
@@ -195,12 +196,23 @@ async function getWslProfiles(wslPath: string, useWslProfiles?: boolean): Promis
 					continue;
 				}
 
-				// Add the profile
-				profiles.push({
+				// Create the profile, adding the icon depending on the distro
+				const profile: ITerminalProfile = {
 					profileName: `${distroName} (WSL)`,
 					path: wslPath,
 					args: [`-d`, `${distroName}`]
-				});
+				};
+				// TODO: Use Ubuntu icon
+				// if (distroName.includes('Ubuntu')) {
+				// }
+				if (distroName.includes('Debian')) {
+					profile.icon = 'terminal-debian';
+				} else {
+					profile.icon = 'terminal-linux';
+				}
+
+				// Add the profile
+				profiles.push(profile);
 			}
 			return profiles;
 		}
@@ -214,7 +226,6 @@ async function detectAvailableUnixProfiles(fsProvider: IFsProvider, logService?:
 	// Add non-quick launch profiles
 	if (!configuredProfilesOnly) {
 		const contents = await fsProvider.readFile('/etc/shells', 'utf8');
-		console.log('contents:' + contents);
 		const profiles = testPaths || contents.split('\n').filter(e => e.trim().indexOf('#') !== 0 && e.trim().length > 0);
 		const counts: Map<string, number> = new Map();
 		for (const profile of profiles) {
@@ -283,7 +294,8 @@ export interface IFsProvider {
 }
 
 interface IPotentialTerminalProfile {
-	profileName: string,
-	paths: string[],
-	args?: string[]
+	profileName: string;
+	paths: string[];
+	args?: string[];
+	icon?: string;
 }

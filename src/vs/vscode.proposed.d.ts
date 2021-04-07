@@ -825,6 +825,17 @@ declare module 'vscode' {
 
 	//#endregion
 
+	//#region Terminal icon https://github.com/microsoft/vscode/issues/120538
+
+	export interface TerminalOptions {
+		/**
+		 * A codicon ID to associate with this terminal.
+		 */
+		readonly icon?: string;
+	}
+
+	//#endregion
+
 	// eslint-disable-next-line vscode-dts-region-comments
 	//#region @jrieken -> exclusive document filters
 
@@ -1079,10 +1090,6 @@ declare module 'vscode' {
 		// todo@API should we really expose this?
 		readonly viewType: string;
 
-		// todo@API cellsAt(range)? getCell(index>)?
-		/** @deprecated Use `getCells(<...>) instead */
-		readonly cells: ReadonlyArray<NotebookCell>;
-
 		/**
 		 * The number of cells in the notebook document.
 		 */
@@ -1183,8 +1190,6 @@ declare module 'vscode' {
 		/**
 		 * The column in which this editor shows.
 		 */
-		// @jrieken
-		// this is not implemented...
 		readonly viewColumn?: ViewColumn;
 
 		/**
@@ -2883,11 +2888,11 @@ declare module 'vscode' {
 
 	export interface PortAttributesProvider {
 		/**
-		 * Provides attributes for the given ports. For ports that your extension doesn't know about, simply don't include
-		 * them in the returned array. For example, if `providePortAttributes` is called with ports [3000, 4000] but your
-		 * extension doesn't know anything about those ports you can return an empty array.
+		 * Provides attributes for the given port. For ports that your extension doesn't know about, simply
+		 * return undefined. For example, if `providePortAttributes` is called with ports 3000 but your
+		 * extension doesn't know anything about 3000 you should return undefined.
 		 */
-		providePortAttributes(ports: number[], pid: number | undefined, commandLine: string | undefined, token: CancellationToken): ProviderResult<PortAttributes[]>;
+		providePortAttributes(port: number, pid: number | undefined, commandLine: string | undefined, token: CancellationToken): ProviderResult<PortAttributes>;
 	}
 
 	export namespace workspace {
