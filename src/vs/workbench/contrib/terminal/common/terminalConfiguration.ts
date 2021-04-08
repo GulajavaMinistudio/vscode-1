@@ -35,6 +35,14 @@ const terminalProfileSchema: IJSONSchema = {
 		icon: {
 			description: localize('terminalProfile.icon', 'A codicon ID to associate with this terminal.'),
 			type: 'string'
+		},
+		env: {
+			markdownDescription: localize('terminalProfile.env', "An object with environment variables that will be added to the terminal profile process. Set to `null` to delete environment variables from the base environment."),
+			type: 'object',
+			additionalProperties: {
+				type: ['string', 'null']
+			},
+			default: {}
 		}
 	}
 };
@@ -153,6 +161,14 @@ export const terminalConfiguration: IConfigurationNode = {
 							icon: {
 								description: localize('terminalProfile.icon', 'A codicon ID to associate with this terminal.'),
 								type: 'string'
+							},
+							env: {
+								markdownDescription: localize('terminalProfile.env', "An object with environment variables that will be added to the terminal profile process. Set to `null` to delete environment variables from the base environment."),
+								type: 'object',
+								additionalProperties: {
+									type: ['string', 'null']
+								},
+								default: {}
 							}
 						}
 					},
@@ -235,6 +251,17 @@ export const terminalConfiguration: IConfigurationNode = {
 			description: localize('terminal.integrated.useWslProfiles', 'Controls whether or not WSL distros are shown in the terminal dropdown'),
 			type: 'boolean',
 			default: true
+		},
+		'terminal.integrated.showTabs': {
+			description: localize('terminal.integrated.showTabs', 'Controls whether or not the terminal tabs widget is shown'),
+			type: 'boolean',
+			default: false
+		},
+		'terminal.integrated.tabsLocation': {
+			'type': 'string',
+			'enum': ['left', 'right'],
+			'default': 'left',
+			'description': localize('terminal.integrated.tabsLocation', "Controls the location of the terminal tabs, either left or right of the terminal container.")
 		},
 		'terminal.integrated.macOptionIsMeta': {
 			description: localize('terminal.integrated.macOptionIsMeta', "Controls whether to treat the option key as the meta key in the terminal on macOS."),
