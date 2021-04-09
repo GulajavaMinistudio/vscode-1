@@ -622,7 +622,7 @@ export class TestEditorGroupsService implements IEditorGroupsService {
 
 	orientation = GroupOrientation.HORIZONTAL;
 	whenRestored: Promise<void> = Promise.resolve(undefined);
-	willRestoreEditors = false;
+	hasRestorableState = false;
 
 	contentDimension = { width: 800, height: 600 };
 
@@ -1057,10 +1057,32 @@ export class TestLifecycleService implements ILifecycleService {
 		});
 	}
 
-	fireWillShutdown(event: BeforeShutdownEvent): void { this._onBeforeShutdown.fire(event); }
+	fireBeforeShutdown(event: BeforeShutdownEvent): void { this._onBeforeShutdown.fire(event); }
+
+	fireWillShutdown(event: WillShutdownEvent): void { this._onWillShutdown.fire(event); }
 
 	shutdown(): void {
 		this.fireShutdown();
+	}
+}
+
+export class TestBeforeShutdownEvent implements BeforeShutdownEvent {
+
+	value: boolean | Promise<boolean> | undefined;
+	reason = ShutdownReason.CLOSE;
+
+	veto(value: boolean | Promise<boolean>): void {
+		this.value = value;
+	}
+}
+
+export class TestWillShutdownEvent implements WillShutdownEvent {
+
+	value: Promise<void>[] = [];
+	reason = ShutdownReason.CLOSE;
+
+	join(promise: Promise<void>, id: string): void {
+		this.value.push(promise);
 	}
 }
 
