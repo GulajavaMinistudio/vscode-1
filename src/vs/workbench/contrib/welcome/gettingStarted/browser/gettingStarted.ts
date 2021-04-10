@@ -92,6 +92,8 @@ export class GettingStartedPage extends EditorPane {
 
 	private tasksSlide!: HTMLElement;
 	private categoriesSlide!: HTMLElement;
+	private tasksContent!: HTMLElement;
+	private taskMediaComponent!: HTMLImageElement;
 
 	constructor(
 		@ICommandService private readonly commandService: ICommandService,
@@ -121,6 +123,8 @@ export class GettingStartedPage extends EditorPane {
 				tabindex: 0,
 				'aria-label': localize('gettingStartedLabel', "Getting Started. Overview of how to get up to speed with your editor.")
 			});
+		this.taskMediaComponent = $('img.getting-started-media');
+
 
 		this.tasExperimentService = tasExperimentService;
 
@@ -257,16 +261,7 @@ export class GettingStartedPage extends EditorPane {
 								break;
 							}
 							case 'toggleTaskCompletion': {
-								if (!this.currentCategory || this.currentCategory.content.type !== 'items') {
-									throw Error('cannot run task action for category of non items type' + this.currentCategory?.id);
-								}
-
-								const taskToggle = assertIsDefined(this.currentCategory?.content.items.find(task => task.id === argument));
-								if (taskToggle.done) {
-									this.gettingStartedService.deprogressTask(argument);
-								} else {
-									this.gettingStartedService.progressTask(argument);
-								}
+								this.toggleTaskCompletion(argument);
 								break;
 							}
 							case 'runTaskAction': {
@@ -305,6 +300,19 @@ export class GettingStartedPage extends EditorPane {
 		});
 	}
 
+	private toggleTaskCompletion(argument: string) {
+		if (!this.currentCategory || this.currentCategory.content.type !== 'items') {
+			throw Error('cannot run task action for category of non items type' + this.currentCategory?.id);
+		}
+
+		const taskToggle = assertIsDefined(this.currentCategory?.content.items.find(task => task.id === argument));
+		if (taskToggle.done) {
+			this.gettingStartedService.deprogressTask(argument);
+		} else {
+			this.gettingStartedService.progressTask(argument);
+		}
+	}
+
 	private async configureCategoryVisibility() {
 		const hiddenCategories = this.getHiddenCategories();
 		const allCategories = this.gettingStartedCategories.filter(x => x.content.type === 'items');
@@ -333,9 +341,9 @@ export class GettingStartedPage extends EditorPane {
 			StorageTarget.USER);
 	}
 
-	private selectTask(id: string | undefined, contractIfAlreadySelected = true, delayFocus = true) {
-		const mediaElement = assertIsDefined(this.container.querySelector('.getting-started-media') as HTMLImageElement);
+	private selectTask(id: string | undefined, toggleIfAlreadySelected = true, delayFocus = true) {
 		this.taskDisposables.clear();
+		const mediaElement = assertIsDefined(this.taskMediaComponent);
 		if (id) {
 			const taskElement = assertIsDefined(this.container.querySelector<HTMLDivElement>(`[data-task-id="${id}"]`));
 			taskElement.parentElement?.querySelectorAll<HTMLElement>('.expanded').forEach(node => {
@@ -344,11 +352,9 @@ export class GettingStartedPage extends EditorPane {
 				node.setAttribute('aria-expanded', 'false');
 			});
 			setTimeout(() => (taskElement as HTMLElement).focus(), delayFocus ? SLIDE_TRANSITION_TIME_MS : 0);
-			if (this.editorInput.selectedTask === id && contractIfAlreadySelected) {
-				this.previousSelection = this.editorInput.selectedTask;
-				this.editorInput.selectedTask = undefined;
-				this.selectedTaskElement = undefined;
-				return;
+			if (this.editorInput.selectedTask === id && toggleIfAlreadySelected) {
+				this.telemetryService.publicLog2<GettingStartedActionEvent, GettingStartedActionClassification>('gettingStarted.ActionExecuted', { command: 'toggleTaskCompletion2', argument: id });
+				this.toggleTaskCompletion(id);
 			}
 			taskElement.style.height = `${taskElement.scrollHeight}px`;
 			if (!this.currentCategory || this.currentCategory.content.type !== 'items') {
@@ -393,29 +399,15 @@ export class GettingStartedPage extends EditorPane {
 		if (this.detailsPageScrollbar) { this.detailsPageScrollbar.dispose(); }
 		if (this.categoriesPageScrollbar) { this.categoriesPageScrollbar.dispose(); }
 
-
-
 		this.categoriesSlide = $('.gettingStartedSlideCategories.gettingStartedSlide');
 
-		const prevButton = $('button.prev-button.button-link', { 'x-dispatch': 'scrollPrev' }, $('span.scroll-button.codicon.codicon-chevron-left'), localize('more', "More"));
+		const prevButton = $('button.prev-button.button-link', { 'x-dispatch': 'scrollPrev' }, $('span.scroll-button.codicon.codicon-chevron-left'), $('span.moreText', {}, localize('more', "More")));
 		this.tasksSlide = $('.gettingStartedSlideDetails.gettingStartedSlide', {}, prevButton);
 
-		const tasksContent =
-			$('.gettingStartedDetailsContent', {},
-				$('.gap'),
-				$('.getting-started-detail-columns', {},
-					$('.gap'),
-					$('.getting-started-detail-left', {},
-						$('.getting-started-detail-title')),
-					$('.getting-started-detail-right', {},
-						$('img.getting-started-media')),
-					$('.gap'),
-				),
-				$('.gap')
-			);
+		this.tasksContent = $('.gettingStartedDetailsContent', {});
 
-		this.detailsPageScrollbar = this._register(new DomScrollableElement(tasksContent, { className: 'full-height-scrollable' }));
-		this.categoriesPageScrollbar = this._register(new DomScrollableElement(this.categoriesSlide, { className: 'full-height-scrollable' }));
+		this.detailsPageScrollbar = this._register(new DomScrollableElement(this.tasksContent, { className: 'full-height-scrollable' }));
+		this.categoriesPageScrollbar = this._register(new DomScrollableElement(this.categoriesSlide, { className: 'full-height-scrollable categoriesScrollbar' }));
 
 		this.tasksSlide.appendChild(this.detailsPageScrollbar.getDomNode());
 
@@ -471,6 +463,7 @@ export class GettingStartedPage extends EditorPane {
 				reset(rightColumn, recentList.getDomElement());
 				recentList.setLimit(10);
 			}
+			setTimeout(() => this.categoriesPageScrollbar?.scanDomNode(), 50);
 		};
 
 		gettingStartedList.onDidChange(layoutLists);
@@ -668,11 +661,11 @@ export class GettingStartedPage extends EditorPane {
 	}
 
 	layout(size: Dimension) {
+		this.detailsScrollbar?.scanDomNode();
 
 		this.categoriesPageScrollbar?.scanDomNode();
 		this.detailsPageScrollbar?.scanDomNode();
 
-		this.detailsScrollbar?.scanDomNode();
 
 		this.startList?.layout(size);
 		this.gettingStartedList?.layout(size);
@@ -680,6 +673,7 @@ export class GettingStartedPage extends EditorPane {
 
 		this.container.classList[size.height <= 600 ? 'add' : 'remove']('height-constrained');
 		this.container.classList[size.width <= 400 ? 'add' : 'remove']('width-constrained');
+		this.container.classList[size.width <= 800 ? 'add' : 'remove']('width-semi-constrained');
 
 		if (this.selectedTaskElement) {
 			this.selectedTaskElement.style.height = ``; // unset or the scrollHeight will just be the old height
@@ -714,7 +708,7 @@ export class GettingStartedPage extends EditorPane {
 
 	private async scrollToCategory(categoryID: string) {
 		this.inProgressScroll = this.inProgressScroll.then(async () => {
-			this.clearDetialView();
+			reset(this.tasksContent);
 			this.editorInput.selectedCategory = categoryID;
 			this.currentCategory = this.gettingStartedCategories.find(category => category.id === categoryID);
 			this.buildCategorySlide(categoryID);
@@ -727,6 +721,8 @@ export class GettingStartedPage extends EditorPane {
 	}
 
 	private buildCategorySlide(categoryID: string, selectedItem?: string) {
+		if (this.detailsScrollbar) { this.detailsScrollbar.dispose(); }
+
 		const category = this.gettingStartedCategories.find(category => category.id === categoryID);
 		let foundNext = false;
 		const nextCategory = this.gettingStartedCategories.find(category => {
@@ -738,22 +734,16 @@ export class GettingStartedPage extends EditorPane {
 		if (!category) { throw Error('could not find category with ID ' + categoryID); }
 		if (category.content.type !== 'items') { throw Error('category with ID ' + categoryID + ' is not of items type'); }
 
-		const leftColumn = assertIsDefined(this.container.querySelector('.getting-started-detail-left'));
-		const detailTitle = assertIsDefined(this.container.querySelector('.getting-started-detail-title'));
-		const oldTitle = detailTitle.querySelector('.getting-started-category');
-		if (oldTitle) { detailTitle.removeChild(oldTitle); }
-
-		detailTitle.appendChild(
+		const categoryDescriptorComponent =
 			$('.getting-started-category',
 				{},
 				this.iconWidgetFor(category),
 				$('.category-description-container', {},
 					$('h2.category-title', {}, category.title),
-					$('.category-description.description', {}, category.description))));
+					$('.category-description.description', {}, category.description)));
 
 		const categoryElements = category.content.items.map(
 			(task, i, arr) => {
-
 				const codicon = $('.codicon' + (task.done ? '.complete' + ThemeIcon.asCSSSelector(gettingStartedCheckedCodicon) : ThemeIcon.asCSSSelector(gettingStartedUncheckedCodicon)),
 					{
 						'data-done-task-id': task.id,
@@ -797,25 +787,19 @@ export class GettingStartedPage extends EditorPane {
 					taskDescription);
 			});
 
-		const detailContainer = $('.getting-started-detail-container', { 'role': 'list' });
-		if (this.detailsScrollbar) { this.detailsScrollbar.getDomNode().remove(); this.detailsScrollbar.dispose(); }
-		this.detailsScrollbar = this._register(new DomScrollableElement(detailContainer, { className: 'full-height-scrollable' }));
-		categoryElements.forEach(element => detailContainer.appendChild(element));
-		leftColumn.appendChild(this.detailsScrollbar.getDomNode());
+		const tasksContainer = $('.getting-started-detail-container', { 'role': 'list' }, ...categoryElements);
+		this.detailsScrollbar = this._register(new DomScrollableElement(tasksContainer, { className: 'tasks-container' }));
+		const taskListComponent = this.detailsScrollbar.getDomNode();
+
+		reset(this.tasksContent, categoryDescriptorComponent, taskListComponent, this.taskMediaComponent);
 
 		const toExpand = category.content.items.find(item => !item.done) ?? category.content.items[0];
 		this.selectTask(selectedItem ?? toExpand.id, false);
+
 		this.detailsScrollbar.scanDomNode();
 		this.detailsPageScrollbar?.scanDomNode();
 
 		this.registerDispatchListeners();
-	}
-
-	private clearDetialView() {
-		const detailContainer = (this.container.querySelector('.getting-started-detail-container'));
-		detailContainer?.remove();
-		const detailTitle = assertIsDefined(this.container.querySelector('.getting-started-detail-title'));
-		while (detailTitle.firstChild) { detailTitle.removeChild(detailTitle.firstChild); }
 	}
 
 	private getKeybindingLabel(command: string) {
