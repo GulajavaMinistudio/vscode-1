@@ -42,6 +42,10 @@ import { Schemas } from 'vs/base/common/network';
 import { ExtensionHostExitCode } from 'vs/workbench/services/extensions/common/extensionHostProtocol';
 import { updateProxyConfigurationsScope } from 'vs/platform/request/common/request';
 import { ConfigurationScope } from 'vs/platform/configuration/common/configurationRegistry';
+import { Codicon } from 'vs/base/common/codicons';
+import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
+
+const MACHINE_PROMPT = false;
 
 export class ExtensionService extends AbstractExtensionService implements IExtensionService {
 
@@ -69,6 +73,7 @@ export class ExtensionService extends AbstractExtensionService implements IExten
 		@IRemoteExplorerService private readonly _remoteExplorerService: IRemoteExplorerService,
 		@IExtensionGalleryService private readonly _extensionGalleryService: IExtensionGalleryService,
 		@ILogService private readonly _logService: ILogService,
+		@IDialogService private readonly _dialogService: IDialogService,
 	) {
 		super(
 			new ExtensionRunningLocationClassifier(
@@ -356,6 +361,29 @@ export class ExtensionService extends AbstractExtensionService implements IExten
 				// Proceed with the local extension host
 				await this._startLocalExtensionHost(localExtensions);
 				return;
+			}
+
+			if (MACHINE_PROMPT) {
+				const dialogResult = await this._dialogService.show(
+					Severity.Info,
+					nls.localize('machineTrustQuestion', "Do you trust the machine you're connecting to?"),
+					[nls.localize('yes', "Yes, connect."), nls.localize('no', "No, disconnect.")],
+					{
+						cancelId: 1,
+						custom: {
+							icon: Codicon.remoteExplorer
+						},
+						// checkbox: { label: nls.localize('remember', "Remember my choice"), checked: true }
+					}
+				);
+
+				if (dialogResult.choice !== 0) {
+					// Did not confirm trust
+					this._notificationService.notify({ severity: Severity.Warning, message: nls.localize('trustFailure', "Refused to connect to untrusted machine.") });
+					// Proceed with the local extension host
+					await this._startLocalExtensionHost(localExtensions);
+					return;
+				}
 			}
 
 			// set the resolved authority
