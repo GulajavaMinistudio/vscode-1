@@ -84,6 +84,7 @@ export interface ITerminalService {
 	terminalTabs: ITerminalTab[];
 	isProcessSupportRegistered: boolean;
 	readonly connectionState: TerminalConnectionState;
+	readonly availableProfiles: ITerminalProfile[];
 
 	initializeTerminals(): Promise<void>;
 	onActiveTabChanged: Event<void>;
@@ -101,14 +102,14 @@ export interface ITerminalService {
 	onRequestAvailableProfiles: Event<IAvailableProfilesRequest>;
 	onDidRegisterProcessSupport: Event<void>;
 	onDidChangeConnectionState: Event<void>;
-	onProfilesConfigChanged: Event<void>;
+	onDidChangeAvailableProfiles: Event<ITerminalProfile[]>;
 	onPanelMovedToSide: Event<void>;
 
 	/**
 	 * Creates a terminal.
 	 * @param shell The shell launch configuration to use.
 	 */
-	createTerminal(shell?: IShellLaunchConfig): ITerminalInstance;
+	createTerminal(shell?: IShellLaunchConfig, cwd?: string | URI): ITerminalInstance;
 
 	/**
 	 * Creates a terminal.
@@ -155,6 +156,7 @@ export interface ITerminalService {
 	getFindState(): FindReplaceState;
 	findNext(): void;
 	findPrevious(): void;
+	focusTabsView(): void;
 
 	registerProcessSupport(isSupported: boolean): void;
 	/**
@@ -165,18 +167,7 @@ export interface ITerminalService {
 	 */
 	registerLinkProvider(linkProvider: ITerminalExternalLinkProvider): IDisposable;
 
-	showProfileQuickPick(type: 'setDefault' | 'createInstance'): Promise<void>;
-
-	/**
-	 * Gets the detected terminal profiles for the platform, this will queue an update of the
-	 * available profiles but will not wait for it to complete.
-	 */
-	getAvailableProfiles(): ITerminalProfile[];
-
-	/**
-	 * Gets the detected terminal profiles for the platform.
-	 */
-	getAvailableProfilesAsync(): Promise<ITerminalProfile[]>;
+	showProfileQuickPick(type: 'setDefault' | 'createInstance', cwd?: string | URI): Promise<ITerminalInstance | undefined>;
 
 	getTabForInstance(instance: ITerminalInstance): ITerminalTab | undefined;
 
@@ -256,6 +247,12 @@ export interface ITerminalInstance {
 	 * terminal instances within a window.
 	 */
 	readonly instanceId: number;
+	/**
+	 * A unique URI for this terminal instance with the following encoding:
+	 * path: Title
+	 * fragment: Instance ID
+	 */
+	readonly resource: URI;
 
 	readonly cols: number;
 	readonly rows: number;

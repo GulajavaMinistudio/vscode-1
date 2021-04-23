@@ -65,7 +65,6 @@ class Kernel {
 	constructor(id: string, label: string) {
 		this.controller = vscode.notebook.createNotebookController(id, 'notebookCoreTest', label);
 		this.controller.executeHandler = this._execute.bind(this);
-		this.controller.isPreferred = true;
 		this.controller.hasExecutionOrder = true;
 		this.controller.supportedLanguages = ['typescript', 'javascript'];
 	}
@@ -170,12 +169,11 @@ suite('Notebook API tests', function () {
 
 	setup(() => {
 
-		const kernel1 = new Kernel('mainKernel', 'Notebook Test Kernel');
+		const kernel1 = new Kernel('mainKernel', 'Notebook Primary Test Kernel');
 
 		const kernel2 = new class extends Kernel {
 			constructor() {
 				super('secondaryKernel', 'Notebook Secondary Test Kernel');
-				this.controller.isPreferred = false;
 				this.controller.hasExecutionOrder = false;
 			}
 
@@ -767,10 +765,9 @@ suite('Notebook API tests', function () {
 
 			constructor() {
 				super('cancelableKernel', 'Notebook Cancelable Test Kernel');
-				this.controller.isPreferred = false;
 			}
 
-			async override _execute(cells: vscode.NotebookCell[]) {
+			override async _execute(cells: vscode.NotebookCell[]) {
 				for (const cell of cells) {
 					const task = this.controller.createNotebookCellExecutionTask(cell);
 					task.start();
@@ -813,13 +810,12 @@ suite('Notebook API tests', function () {
 
 			constructor() {
 				super('interruptableKernel', 'Notebook Interruptable Test Kernel');
-				this.controller.isPreferred = false;
 				this.controller.interruptHandler = this.interrupt.bind(this);
 			}
 
 			private _task: vscode.NotebookCellExecutionTask | undefined;
 
-			async override _execute(cells: vscode.NotebookCell[]) {
+			override async _execute(cells: vscode.NotebookCell[]) {
 				this._task = this.controller.createNotebookCellExecutionTask(cells[0]);
 				this._task.start();
 			}
@@ -1169,33 +1165,6 @@ suite('Notebook API tests', function () {
 		await closeAllEditors();
 	});
 
-	test('#116598, output items change event.', async function () {
-
-		const resource = await createRandomNotebookFile();
-		await vscode.commands.executeCommand('vscode.openWith', resource, 'notebookCoreTest');
-
-		const edit = new vscode.WorkspaceEdit();
-		edit.appendNotebookCellOutput(resource, 0, [new vscode.NotebookCellOutput([
-			new vscode.NotebookCellOutputItem('application/foo', 'bar'),
-			new vscode.NotebookCellOutputItem('application/json', { data: true }, { metadata: true }),
-		])]);
-		await vscode.workspace.applyEdit(edit);
-		assert.strictEqual(vscode.window.activeNotebookEditor!.document.cellAt(0).outputs.length, 1);
-		assert.strictEqual(vscode.window.activeNotebookEditor!.document.cellAt(0).outputs[0].outputs.length, 2);
-
-		const appendEdit = new vscode.WorkspaceEdit();
-		const newItem = new vscode.NotebookCellOutputItem('text/plain', '1');
-		appendEdit.appendNotebookCellOutputItems(
-			resource,
-			0,
-			vscode.window.activeNotebookEditor!.document.cellAt(0).outputs[0].id,
-			[newItem]
-		);
-		await vscode.workspace.applyEdit(appendEdit);
-		assert.strictEqual(vscode.window.activeNotebookEditor!.document.cellAt(0).outputs[0].outputs.length, 3);
-		assert.deepStrictEqual(vscode.window.activeNotebookEditor!.document.cellAt(0).outputs[0].outputs[2], newItem);
-	});
-
 	test('#115855 onDidSaveNotebookDocument', async function () {
 		const resource = await createRandomNotebookFile();
 		const notebook = await vscode.notebook.openNotebookDocument(resource);
@@ -1223,7 +1192,6 @@ suite('Notebook API tests', function () {
 
 			constructor() {
 				super('verifyOutputSyncKernel', '');
-				this.controller.isPreferred = false;
 			}
 
 			override async _execute(cells: vscode.NotebookCell[]) {

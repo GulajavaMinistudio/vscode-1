@@ -16,7 +16,12 @@
   "activationEvents": [
     "onAuthenticationRequest:microsoft"
   ],
-  "workspaceTrust": { "request": "never" },
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "extensionKind": [
     "ui",
     "workspace",

@@ -4,17 +4,16 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as nls from 'vs/nls';
-import * as DOM from 'vs/base/browser/dom';
 import { Action, IAction, Separator, SubmenuAction } from 'vs/base/common/actions';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IContextMenuService, IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IThemeService, IColorTheme, registerThemingParticipant, ICssStyleCollector } from 'vs/platform/theme/common/themeService';
-import { configureTerminalSettingsTitle, ContextMenuTabsGroup, selectDefaultProfileTitle, switchTerminalActionViewItemSeparator } from 'vs/workbench/contrib/terminal/browser/terminalActions';
+import { ContextMenuTabsGroup, switchTerminalActionViewItemSeparator, switchTerminalShowTabsTitle } from 'vs/workbench/contrib/terminal/browser/terminalActions';
 import { TERMINAL_BACKGROUND_COLOR, TERMINAL_BORDER_COLOR } from 'vs/workbench/contrib/terminal/common/terminalColorRegistry';
 import { INotificationService, IPromptChoice, Severity } from 'vs/platform/notification/common/notification';
-import { ITerminalService, TerminalConnectionState } from 'vs/workbench/contrib/terminal/browser/terminal';
+import { ITerminalInstance, ITerminalService, TerminalConnectionState } from 'vs/workbench/contrib/terminal/browser/terminal';
 import { ViewPane, IViewPaneOptions } from 'vs/workbench/browser/parts/views/viewPane';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
@@ -23,17 +22,20 @@ import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { PANEL_BACKGROUND, SIDE_BAR_BACKGROUND } from 'vs/workbench/common/theme';
 import { IMenu, IMenuService, MenuId, MenuItemAction } from 'vs/platform/actions/common/actions';
 import { ITerminalProfile, TERMINAL_COMMAND_ID } from 'vs/workbench/contrib/terminal/common/terminal';
-import { BaseActionViewItem, SelectActionViewItem } from 'vs/base/browser/ui/actionbar/actionViewItems';
+import { ActionViewItem, SelectActionViewItem } from 'vs/base/browser/ui/actionbar/actionViewItems';
 import { ITerminalContributionService } from 'vs/workbench/contrib/terminal/common/terminalExtensionPoints';
 import { attachSelectBoxStyler, attachStylerCallback } from 'vs/platform/theme/common/styler';
 import { selectBorder } from 'vs/platform/theme/common/colorRegistry';
 import { ISelectOptionItem } from 'vs/base/browser/ui/selectBox/selectBox';
 import { IActionViewItem } from 'vs/base/browser/ui/actionbar/actionbar';
 import { TerminalTabbedView } from 'vs/workbench/contrib/terminal/browser/terminalTabbedView';
-import { DropdownMenuActionViewItem } from 'vs/base/browser/ui/dropdown/dropdownActionViewItem';
 import { Codicon } from 'vs/base/common/codicons';
-import { MenuEntryActionViewItem } from 'vs/platform/actions/browser/menuEntryActionViewItem';
 import { ICommandService } from 'vs/platform/commands/common/commands';
+import { DropdownWithPrimaryActionViewItem } from 'vs/base/browser/ui/dropdown/dropdownWithPrimaryActionViewItem';
+import { reset } from 'vs/base/browser/dom';
+import { renderLabelWithIcons } from 'vs/base/browser/ui/iconLabel/iconLabels';
+import { getColorForSeverity } from 'vs/workbench/contrib/terminal/browser/terminalStatusList';
+import { createAndFillInContextMenuActions } from 'vs/platform/actions/browser/menuEntryActionViewItem';
 
 export class TerminalViewPane extends ViewPane {
 	private _actions: IAction[] | undefined;
@@ -46,8 +48,8 @@ export class TerminalViewPane extends ViewPane {
 	private _bodyDimensions: { width: number, height: number } = { width: 0, height: 0 };
 	private _isWelcomeShowing: boolean = false;
 	private _tabButtons: DropdownWithPrimaryActionViewItem | undefined;
-	private _dropdownMenu: IMenu;
-	private _requestedAvailableProfiles: boolean = false;
+	private readonly _dropdownMenu: IMenu;
+	private readonly _singleTabMenu: IMenu;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -61,10 +63,10 @@ export class TerminalViewPane extends ViewPane {
 		@IThemeService themeService: IThemeService,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@INotificationService private readonly _notificationService: INotificationService,
-		@IKeybindingService private readonly _keybindingService: IKeybindingService,
 		@IOpenerService openerService: IOpenerService,
 		@IMenuService private readonly _menuService: IMenuService,
-		@ICommandService private readonly _commandService: ICommandService
+		@ICommandService private readonly _commandService: ICommandService,
+		@ITerminalContributionService private readonly _terminalContributionService: ITerminalContributionService
 	) {
 		super(options, keybindingService, _contextMenuService, configurationService, _contextKeyService, viewDescriptorService, _instantiationService, openerService, themeService, telemetryService);
 		this._terminalService.onDidRegisterProcessSupport(() => {
@@ -87,25 +89,9 @@ export class TerminalViewPane extends ViewPane {
 			}
 		});
 
-		this._dropdownMenu = this._menuService.createMenu(MenuId.TerminalToolbarContext, this._contextKeyService);
-
-		this._terminalService.onRequestAvailableProfiles(() => {
-			if (!this._requestedAvailableProfiles) {
-				this._terminalService.getAvailableProfilesAsync().then(profiles => {
-					if (this._tabButtons) {
-						this._updateTabActionBar(profiles);
-					}
-				});
-				this._requestedAvailableProfiles = true;
-			}
-		});
-		this._terminalService.onProfilesConfigChanged(() => {
-			this._terminalService.getAvailableProfilesAsync().then(profiles => {
-				if (this._tabButtons) {
-					this._updateTabActionBar(profiles);
-				}
-			});
-		});
+		this._dropdownMenu = this._register(this._menuService.createMenu(MenuId.TerminalToolbarContext, this._contextKeyService));
+		this._singleTabMenu = this._register(this._menuService.createMenu(MenuId.TerminalSingleTabContext, this._contextKeyService));
+		this._register(this._terminalService.onDidChangeAvailableProfiles(profiles => this._updateTabActionBar(profiles)));
 	}
 
 	public override renderBody(container: HTMLElement): void {
@@ -184,27 +170,36 @@ export class TerminalViewPane extends ViewPane {
 	}
 
 	public override getActionViewItem(action: Action): IActionViewItem | undefined {
-		if (action.id === TERMINAL_COMMAND_ID.SWITCH_TERMINAL) {
-			return this._instantiationService.createInstance(SwitchTerminalActionViewItem, action);
-		} else if (action.id === TERMINAL_COMMAND_ID.CREATE_WITH_PROFILE_BUTTON) {
-			if (this._tabButtons) {
-				this._tabButtons.dispose();
+		switch (action.id) {
+			case TERMINAL_COMMAND_ID.SWITCH_TERMINAL: {
+				return this._instantiationService.createInstance(SwitchTerminalActionViewItem, action);
 			}
-			const actions = this._getInitialTabActionBarArgs();
-			this._tabButtons = new DropdownWithPrimaryActionViewItem(actions.primaryAction, actions.dropdownAction, actions.dropdownMenuActions, actions.className, this._contextMenuService, this._keybindingService, this._notificationService, actions.dropdownIcon || 'codicon-chevron-down');
-			return this._tabButtons;
+			case TERMINAL_COMMAND_ID.FOCUS: {
+				const actions: IAction[] = [];
+				createAndFillInContextMenuActions(this._singleTabMenu, undefined, actions);
+				return this._instantiationService.createInstance(SingleTerminalTabActionViewItem, action, actions);
+			}
+			case TERMINAL_COMMAND_ID.CREATE_WITH_PROFILE_BUTTON: {
+				if (this._tabButtons) {
+					this._tabButtons.dispose();
+				}
+				const actions = this._getTabActionBarArgs(this._terminalService.availableProfiles);
+				this._tabButtons = new DropdownWithPrimaryActionViewItem(actions.primaryAction, actions.dropdownAction, actions.dropdownMenuActions, actions.className, this._contextMenuService);
+				this._updateTabActionBar(this._terminalService.availableProfiles);
+				return this._tabButtons;
+			}
 		}
 		return super.getActionViewItem(action);
 	}
 
-	private async _updateTabActionBar(profiles: ITerminalProfile[]): Promise<void> {
-		const actions = await this._getTabActionBarArgs(profiles);
+	private _updateTabActionBar(profiles: ITerminalProfile[]): void {
+		const actions = this._getTabActionBarArgs(profiles);
 		this._tabButtons?.update(actions.dropdownAction, actions.dropdownMenuActions, actions.dropdownIcon);
 	}
 
 	private _getTabActionBarArgs(profiles: ITerminalProfile[]): {
 		primaryAction: MenuItemAction,
-		dropdownAction: MenuItemAction,
+		dropdownAction: IAction,
 		dropdownMenuActions: IAction[],
 		className: string,
 		dropdownIcon?: string
@@ -217,7 +212,11 @@ export class TerminalViewPane extends ViewPane {
 			submenuActions.push(new MenuItemAction({ id: TERMINAL_COMMAND_ID.SPLIT, title: p.profileName, category: ContextMenuTabsGroup.Profile }, undefined, { arg: p, shouldForwardArgs: true }, this._contextKeyService, this._commandService));
 		}
 
-		if (dropdownActions.length) {
+		for (const contributed of this._terminalContributionService.terminalTypes) {
+			dropdownActions.push(new MenuItemAction({ id: contributed.command, title: contributed.title, category: ContextMenuTabsGroup.Profile }, undefined, undefined, this._contextKeyService, this._commandService));
+		}
+
+		if (dropdownActions.length > 0) {
 			dropdownActions.push(new SubmenuAction('split.profile', 'Split...', submenuActions));
 			dropdownActions.push(new Separator());
 		}
@@ -232,32 +231,9 @@ export class TerminalViewPane extends ViewPane {
 		}
 
 		const primaryAction = this._instantiationService.createInstance(MenuItemAction, { id: TERMINAL_COMMAND_ID.NEW, title: nls.localize('terminal.new', "New Terminal"), icon: Codicon.plus }, undefined, undefined);
-		const secondaryAction = this._instantiationService.createInstance(MenuItemAction, { id: 'launch-profile', title: 'Launch Profile...', icon: Codicon.chevronDown }, undefined, undefined);
-		return { primaryAction, dropdownAction: secondaryAction, dropdownMenuActions: dropdownActions, className: 'terminal-tab-actions', dropdownIcon: 'codicon-chevron-down' };
+		const dropdownAction = new Action('refresh profiles', 'Launch Profile...', 'codicon-chevron-down', true);
+		return { primaryAction, dropdownAction, dropdownMenuActions: dropdownActions, className: 'terminal-tab-actions' };
 	}
-
-	private _getInitialTabActionBarArgs(): {
-		primaryAction: MenuItemAction,
-		dropdownAction: MenuItemAction,
-		dropdownMenuActions: IAction[],
-		className: string,
-		dropdownIcon?: string
-	} {
-		const dropdownActions: IAction[] = [];
-
-		for (const [, configureActions] of this._dropdownMenu.getActions()) {
-			for (const action of configureActions) {
-				if ('alt' in action) {
-					dropdownActions.push(action);
-				}
-			}
-		}
-
-		const primaryAction = this._instantiationService.createInstance(MenuItemAction, { id: TERMINAL_COMMAND_ID.NEW, title: nls.localize('terminal.new', "New Terminal"), icon: Codicon.plus }, undefined, undefined);
-		const secondaryAction = this._instantiationService.createInstance(MenuItemAction, { id: 'launch-profile', title: 'Launch Profile...', icon: Codicon.chevronDown }, undefined, undefined);
-		return { primaryAction, dropdownAction: secondaryAction, dropdownMenuActions: dropdownActions, className: 'terminal.profiles.actions', dropdownIcon: 'codicon-chevron-down' };
-	}
-
 
 	public override focus() {
 		if (this._terminalService.connectionState === TerminalConnectionState.Connecting) {
@@ -275,6 +251,10 @@ export class TerminalViewPane extends ViewPane {
 			return;
 		}
 		this._focus();
+	}
+
+	public focusTabsView(): void {
+		this._terminalTabbedView?.focusTabsView();
 	}
 
 	private _focus() {
@@ -306,16 +286,15 @@ class SwitchTerminalActionViewItem extends SelectActionViewItem {
 		action: IAction,
 		@ITerminalService private readonly _terminalService: ITerminalService,
 		@IThemeService private readonly _themeService: IThemeService,
-		@ITerminalContributionService private readonly _contributions: ITerminalContributionService,
 		@IContextViewService contextViewService: IContextViewService
 	) {
-		super(null, action, getTerminalSelectOpenItems(_terminalService, _contributions), _terminalService.activeTabIndex, contextViewService, { ariaLabel: nls.localize('terminals', 'Open Terminals.'), optionsAsChildren: true });
+		super(null, action, getTerminalSelectOpenItems(_terminalService), _terminalService.activeTabIndex, contextViewService, { ariaLabel: nls.localize('terminals', 'Open Terminals.'), optionsAsChildren: true });
 		this._register(_terminalService.onInstancesChanged(() => this._updateItems(), this));
 		this._register(_terminalService.onActiveTabChanged(() => this._updateItems(), this));
 		this._register(_terminalService.onInstanceTitleChanged(() => this._updateItems(), this));
 		this._register(_terminalService.onTabDisposed(() => this._updateItems(), this));
 		this._register(_terminalService.onDidChangeConnectionState(() => this._updateItems(), this));
-		this._register(_terminalService.onProfilesConfigChanged(() => this._updateItems(), this));
+		this._register(_terminalService.onDidChangeAvailableProfiles(() => this._updateItems(), this));
 		this._register(attachSelectBoxStyler(this.selectBox, this._themeService));
 	}
 
@@ -328,12 +307,12 @@ class SwitchTerminalActionViewItem extends SelectActionViewItem {
 	}
 
 	private _updateItems(): void {
-		const options = getTerminalSelectOpenItems(this._terminalService, this._contributions);
+		const options = getTerminalSelectOpenItems(this._terminalService);
 		this.setOptions(options, this._terminalService.activeTabIndex);
 	}
 }
 
-function getTerminalSelectOpenItems(terminalService: ITerminalService, contributions: ITerminalContributionService): ISelectOptionItem[] {
+function getTerminalSelectOpenItems(terminalService: ITerminalService): ISelectOptionItem[] {
 	let items: ISelectOptionItem[];
 	if (terminalService.connectionState === TerminalConnectionState.Connected) {
 		items = terminalService.getTabLabels().map(label => {
@@ -342,82 +321,75 @@ function getTerminalSelectOpenItems(terminalService: ITerminalService, contribut
 	} else {
 		items = [{ text: nls.localize('terminalConnectingLabel', "Starting...") }];
 	}
-
 	items.push({ text: switchTerminalActionViewItemSeparator, isDisabled: true });
-
-	items.push(...getProfileSelectOptionItems(terminalService));
-
-	for (const contributed of contributions.terminalTypes) {
-		items.push({ text: contributed.title });
-	}
-	items.push({ text: switchTerminalActionViewItemSeparator, isDisabled: true });
-	if (terminalService.isProcessSupportRegistered) {
-		items.push({ text: selectDefaultProfileTitle });
-	}
-	items.push({ text: configureTerminalSettingsTitle });
+	items.push({ text: switchTerminalShowTabsTitle });
 	return items;
 }
 
-function getProfileSelectOptionItems(terminalService: ITerminalService): ISelectOptionItem[] {
-	const detectedProfiles = terminalService.getAvailableProfiles();
-	return detectedProfiles?.map((shell: { profileName: string; }) => ({ text: 'New ' + shell.profileName } as ISelectOptionItem)) || [];
+class SingleTerminalTabActionViewItem extends ActionViewItem {
+	constructor(
+		action: IAction,
+		private readonly _actions: IAction[],
+		@ITerminalService private readonly _terminalService: ITerminalService,
+		@IThemeService private readonly _themeService: IThemeService,
+		@IContextMenuService private readonly _contextMenuService: IContextMenuService,
+	) {
+		super(undefined, {
+			...action,
+			dispose: () => action.dispose(),
+			run: async () => this._run(),
+			label: getSingleTabLabel(_terminalService.getActiveInstance())
+		});
+		this._register(this._terminalService.onInstancePrimaryStatusChanged(() => this.updateLabel()));
+		this._register(this._terminalService.onActiveInstanceChanged(() => this.updateLabel()));
+		this._register(this._terminalService.onInstanceTitleChanged(e => {
+			if (e === this._terminalService.getActiveInstance()) {
+				this.updateLabel();
+			}
+		}));
+	}
+
+	override updateLabel(): void {
+		if (this.label) {
+			const label = this.label;
+			const instance = this._terminalService.getActiveInstance();
+			if (!instance) {
+				reset(label, '');
+				return;
+			}
+			label.classList.add('single-terminal-tab');
+			let colorStyle = '';
+			const primaryStatus = instance.statusList.primary;
+			if (primaryStatus) {
+				const colorKey = getColorForSeverity(primaryStatus.severity);
+				this._themeService.getColorTheme();
+				const foundColor = this._themeService.getColorTheme().getColor(colorKey);
+				if (foundColor) {
+					colorStyle = foundColor.toString();
+				}
+			}
+			label.style.color = colorStyle;
+			reset(label, ...renderLabelWithIcons(getSingleTabLabel(instance)));
+		}
+	}
+
+	private _run() {
+		this._contextMenuService.showContextMenu({
+			getAnchor: () => this.element!,
+			getActions: () => this._actions,
+			getActionsContext: () => this.label
+		});
+	}
 }
 
-export class DropdownWithPrimaryActionViewItem extends BaseActionViewItem {
-	private _primaryAction: MenuEntryActionViewItem;
-	private _dropdown: DropdownMenuActionViewItem;
-	private _container: HTMLElement | null = null;
-	constructor(
-		primaryAction: MenuItemAction,
-		dropdownAction: MenuItemAction,
-		dropdownMenuActions: IAction[],
-		private readonly _className: string,
-		@IContextMenuService private readonly _contextMenuService: IContextMenuService,
-		@IKeybindingService private readonly _keybindingService: IKeybindingService,
-		@INotificationService private readonly _notificationService: INotificationService,
-		dropdownIcon?: string
-	) {
-		super(null, primaryAction);
-		this._primaryAction = new MenuEntryActionViewItem(primaryAction, this._keybindingService, this._notificationService);
-		this._dropdown = new DropdownMenuActionViewItem(dropdownAction, dropdownMenuActions, _contextMenuService, { menuAsChild: true, classNames: ['codicon', dropdownIcon || 'codicon-chevron-down'] });
+function getSingleTabLabel(instance: ITerminalInstance | null) {
+	if (!instance || !instance.title) {
+		return '';
 	}
-
-	override render(container: HTMLElement): void {
-		this._container = container;
-		super.render(this._container);
-		this.element = DOM.append(this._container, DOM.$(''));
-		this.element.className = this._className;
-		this._primaryAction.render(this.element);
-		this._dropdown.render(this.element);
-		this._stylize();
+	const primaryStatus = instance.statusList.primary;
+	const baseLabel = `$(${instance.icon.id}) ${instance.title}`;
+	if (primaryStatus?.icon) {
+		return `${baseLabel} $(${primaryStatus.icon.id})`;
 	}
-
-	private _stylize(): void {
-		if (!this.element || !this._dropdown.element || !this._primaryAction.element) {
-			return;
-		}
-		const elementStyle = this.element.style;
-		elementStyle.display = 'flex';
-		elementStyle.flexDirection = 'row';
-		const dropdownStyle = this._dropdown.element.style;
-		dropdownStyle.paddingLeft = '0px';
-		dropdownStyle.fontSize = '12px';
-		dropdownStyle.maxWidth = '6px';
-		dropdownStyle.lineHeight = '16px';
-		dropdownStyle.marginLeft = '0px';
-		const primaryActionStyle = this._primaryAction.element.style;
-		primaryActionStyle.marginRight = '0px';
-		if (this._primaryAction.element.children[0]) {
-			(this._primaryAction.element.children[0] as HTMLElement).style.paddingRight = '0px';
-		}
-	}
-
-	update(dropdownAction: MenuItemAction, dropdownMenuActions: IAction[], dropdownIcon?: string): void {
-		this._dropdown?.dispose();
-		this._dropdown = new DropdownMenuActionViewItem(dropdownAction, dropdownMenuActions, this._contextMenuService, { menuAsChild: true, classNames: ['codicon', dropdownIcon || 'codicon-chevron-down'] });
-		if (this.element) {
-			this._dropdown.render(this.element);
-			this._stylize();
-		}
-	}
+	return baseLabel;
 }

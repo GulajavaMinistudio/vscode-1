@@ -19,13 +19,14 @@ import { DataTransfers } from 'vs/base/browser/dnd';
 import { URI } from 'vs/base/common/uri';
 import { StandardMouseEvent } from 'vs/base/browser/mouseEvent';
 import { createAndFillInContextMenuActions } from 'vs/platform/actions/browser/menuEntryActionViewItem';
-import { IAction } from 'vs/base/common/actions';
+import { Action, IAction, Separator } from 'vs/base/common/actions';
 import { IMenu, IMenuService, MenuId } from 'vs/platform/actions/common/actions';
 import { IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { KEYBINDING_CONTEXT_TERMINAL_FIND_VISIBLE } from 'vs/workbench/contrib/terminal/common/terminal';
+import { KEYBINDING_CONTEXT_TERMINAL_FIND_VISIBLE, KEYBINDING_CONTEXT_TERMINAL_IS_TABS_NARROW_FOCUS, KEYBINDING_CONTEXT_TERMINAL_TABS_FOCUS } from 'vs/workbench/contrib/terminal/common/terminal';
 import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
 import { ILogService } from 'vs/platform/log/common/log';
+import { localize } from 'vs/nls';
 
 const $ = dom.$;
 
@@ -53,7 +54,6 @@ export class TerminalTabbedView extends Disposable {
 	private _tabTreeIndex: number;
 	private _terminalContainerIndex: number;
 
-	private _showTabs: boolean;
 	private _findWidgetVisible: IContextKey<boolean>;
 
 	private _height: number | undefined;
@@ -62,6 +62,10 @@ export class TerminalTabbedView extends Disposable {
 	private _cancelContextMenu: boolean = false;
 	private _instanceMenu: IMenu;
 	private _tabsWidgetMenu: IMenu;
+	private _tabsWidgetEmptyMenu: IMenu;
+
+	private _terminalIsTabsNarrowContextKey: IContextKey<boolean>;
+	private _terminalTabsFocusContextKey: IContextKey<boolean>;
 
 	constructor(
 		parentElement: HTMLElement,
@@ -70,7 +74,7 @@ export class TerminalTabbedView extends Disposable {
 		@INotificationService private readonly _notificationService: INotificationService,
 		@IContextMenuService private readonly _contextMenuService: IContextMenuService,
 		@IThemeService private readonly _themeService: IThemeService,
-		@IConfigurationService configurationService: IConfigurationService,
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@IMenuService menuService: IMenuService,
 		@IStorageService private readonly _storageService: IStorageService,
 		@ILogService private readonly _logService: ILogService,
@@ -88,6 +92,7 @@ export class TerminalTabbedView extends Disposable {
 
 		this._instanceMenu = this._register(menuService.createMenu(MenuId.TerminalContainerContext, contextKeyService));
 		this._tabsWidgetMenu = this._register(menuService.createMenu(MenuId.TerminalTabsWidgetContext, contextKeyService));
+		this._tabsWidgetEmptyMenu = this._register(menuService.createMenu(MenuId.TerminalTabsWidgetEmptyContext, contextKeyService));
 
 		this._register(this._tabsWidget = this._instantiationService.createInstance(TerminalTabsWidget, this._terminalTabTree));
 		this._register(this._findWidget = this._instantiationService.createInstance(TerminalFindWidget, this._terminalService.getFindState()));
@@ -97,39 +102,30 @@ export class TerminalTabbedView extends Disposable {
 		this._terminalContainer.classList.add('terminal-outer-container');
 		this._terminalContainer.style.display = 'block';
 
-		this._showTabs = this._terminalService.configHelper.config.showTabs;
-
-		this._tabTreeIndex = this._terminalService.configHelper.config.tabsLocation === 'left' ? 0 : 1;
-		this._terminalContainerIndex = this._terminalService.configHelper.config.tabsLocation === 'left' ? 1 : 0;
+		this._tabTreeIndex = this._terminalService.configHelper.config.tabs.location === 'left' ? 0 : 1;
+		this._terminalContainerIndex = this._terminalService.configHelper.config.tabs.location === 'left' ? 1 : 0;
 
 		this._findWidgetVisible = KEYBINDING_CONTEXT_TERMINAL_FIND_VISIBLE.bindTo(contextKeyService);
 
 		this._terminalService.setContainers(parentElement, this._terminalContainer);
 
-		configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('terminal.integrated.showTabs')) {
-				this._showTabs = this._terminalService.configHelper.config.showTabs;
-				if (this._showTabs) {
-					this._addTabTree();
-					this._addSashListener();
-					this._splitView.resizeView(this._tabTreeIndex, DEFAULT_TABS_WIDGET_WIDTH);
-				} else {
-					this._splitView.removeView(this._tabTreeIndex);
-					if (this._plusButton) {
-						this._tabTreeContainer.removeChild(this._plusButton);
-					}
-					this._removeSashListener();
-				}
-			} else if (e.affectsConfiguration('terminal.integrated.tabsLocation')) {
-				this._tabTreeIndex = this._terminalService.configHelper.config.tabsLocation === 'left' ? 0 : 1;
-				this._terminalContainerIndex = this._terminalService.configHelper.config.tabsLocation === 'left' ? 1 : 0;
-				if (this._showTabs) {
+		this._terminalIsTabsNarrowContextKey = KEYBINDING_CONTEXT_TERMINAL_IS_TABS_NARROW_FOCUS.bindTo(contextKeyService);
+		this._terminalTabsFocusContextKey = KEYBINDING_CONTEXT_TERMINAL_TABS_FOCUS.bindTo(contextKeyService);
+
+		_configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('terminal.integrated.tabs.enable') ||
+				e.affectsConfiguration('terminal.integrated.tabs.hideForSingle')) {
+				this._refreshShowTabs();
+			} else if (e.affectsConfiguration('terminal.integrated.tabs.location')) {
+				this._tabTreeIndex = this._terminalService.configHelper.config.tabs.location === 'left' ? 0 : 1;
+				this._terminalContainerIndex = this._terminalService.configHelper.config.tabs.location === 'left' ? 1 : 0;
+				if (this._shouldShowTabs()) {
 					this._splitView.swapViews(0, 1);
-					this._splitView.resizeView(this._tabTreeIndex, DEFAULT_TABS_WIDGET_WIDTH);
+					this._splitView.resizeView(this._tabTreeIndex, this._getLastWidgetWidth());
 				}
 			}
 		});
-
+		this._register(this._terminalService.onInstancesChanged(() => this._refreshShowTabs()));
 		this._register(this._themeService.onDidColorThemeChange(theme => this._updateTheme(theme)));
 		this._updateTheme();
 
@@ -147,6 +143,31 @@ export class TerminalTabbedView extends Disposable {
 			} catch (e) {
 			}
 		});
+	}
+
+	private _shouldShowTabs(): boolean {
+		const enable = this._terminalService.configHelper.config.tabs.enable;
+		const hideForSingle = this._terminalService.configHelper.config.tabs.hideForSingle;
+		return enable && (!hideForSingle || (hideForSingle && this._terminalService.terminalInstances.length > 1));
+	}
+
+	private _refreshShowTabs() {
+		if (this._shouldShowTabs()) {
+			if (this._splitView.length === 1) {
+				this._addTabTree();
+				this._addSashListener();
+				this._splitView.resizeView(this._tabTreeIndex, this._getLastWidgetWidth());
+				this._refreshHasTextClass();
+			}
+		} else {
+			if (this._splitView.length === 2) {
+				this._splitView.removeView(this._tabTreeIndex);
+				if (this._plusButton) {
+					this._tabTreeContainer.removeChild(this._plusButton);
+				}
+				this._removeSashListener();
+			}
+		}
 	}
 
 	private _getLastWidgetWidth(): number {
@@ -227,7 +248,7 @@ export class TerminalTabbedView extends Disposable {
 		this._register(this._splitView.onDidSashReset(() => this._handleOnDidSashReset()));
 		this._register(this._splitView.onDidSashChange(() => this._handleOnDidSashChange()));
 
-		if (this._showTabs) {
+		if (this._shouldShowTabs()) {
 			this._addTabTree();
 		}
 		this._splitView.addView({
@@ -239,7 +260,7 @@ export class TerminalTabbedView extends Disposable {
 			priority: LayoutPriority.High
 		}, Sizing.Distribute, this._terminalContainerIndex);
 
-		if (this._showTabs) {
+		if (this._shouldShowTabs()) {
 			this._addSashListener();
 		}
 	}
@@ -247,7 +268,7 @@ export class TerminalTabbedView extends Disposable {
 	private _addTabTree() {
 		this._splitView.addView({
 			element: this._tabTreeContainer,
-			layout: width => this._tabsWidget.layout(this._height ? this._height - 28 : 0, width),
+			layout: width => this._tabsWidget.layout(this._height || 0, width),
 			minimumSize: MIN_TABS_WIDGET_WIDTH,
 			maximumSize: MAX_TABS_WIDGET_WIDTH,
 			onDidChange: () => Disposable.None,
@@ -295,13 +316,15 @@ export class TerminalTabbedView extends Disposable {
 		this._width = width;
 		this._refreshHasTextClass();
 		this._splitView.layout(width);
-		if (this._showTabs) {
+		if (this._shouldShowTabs()) {
 			this._splitView.resizeView(this._tabTreeIndex, this._getLastWidgetWidth());
 		}
 	}
 
 	private _refreshHasTextClass() {
-		this._tabTreeContainer.classList.toggle('has-text', this._tabTreeContainer.clientWidth > MIDPOINT_WIDGET_WIDTH);
+		const hasText = this._tabTreeContainer.clientWidth > MIDPOINT_WIDGET_WIDTH;
+		this._tabTreeContainer.classList.toggle('has-text', hasText);
+		this._terminalIsTabsNarrowContextKey.set(!hasText);
 	}
 
 	private _updateTheme(theme?: IColorTheme): void {
@@ -313,7 +336,7 @@ export class TerminalTabbedView extends Disposable {
 	}
 
 	private _attachEventListeners(parentDomElement: HTMLElement, terminalContainer: HTMLElement): void {
-		this._register(dom.addDisposableListener(parentDomElement, 'mousedown', async (event: MouseEvent) => {
+		this._register(dom.addDisposableListener(terminalContainer, 'mousedown', async (event: MouseEvent) => {
 			if (this._terminalService.terminalInstances.length === 0) {
 				return;
 			}
@@ -390,6 +413,12 @@ export class TerminalTabbedView extends Disposable {
 				event.stopPropagation();
 			}
 		}));
+		this._register(dom.addDisposableListener(this._tabTreeContainer, dom.EventType.FOCUS_IN, () => {
+			this._terminalTabsFocusContextKey.set(true);
+		}));
+		this._register(dom.addDisposableListener(this._tabTreeContainer, dom.EventType.FOCUS_OUT, () => {
+			this._terminalTabsFocusContextKey.set(false);
+		}));
 		this._register(dom.addDisposableListener(parentDomElement, dom.EventType.DROP, async (e: DragEvent) => {
 			if (e.target === this._parentElement || dom.isAncestor(e.target as HTMLElement, parentDomElement)) {
 				if (!e.dataTransfer) {
@@ -419,14 +448,25 @@ export class TerminalTabbedView extends Disposable {
 			}
 		}));
 	}
+
 	private _openContextMenu(event: MouseEvent, parent: HTMLElement): void {
 		const standardEvent = new StandardMouseEvent(event);
 
 		const anchor: { x: number, y: number } = { x: standardEvent.posx, y: standardEvent.posy };
 		const actions: IAction[] = [];
-		const menu = parent === this._terminalContainer ? this._instanceMenu : this._tabsWidgetMenu;
+		let menu: IMenu;
+		if (parent === this._terminalContainer) {
+			menu = this._instanceMenu;
+		} else {
+			menu = this._tabsWidget.getFocus().length === 0 ? this._tabsWidgetEmptyMenu : this._tabsWidgetMenu;
+		}
 
 		const actionsDisposable = createAndFillInContextMenuActions(menu, undefined, actions);
+
+		// TODO: Convert to command?
+		if (menu === this._tabsWidgetEmptyMenu) {
+			actions.push(...this._getTabActions());
+		}
 
 		this._contextMenuService.showContextMenu({
 			getAnchor: () => anchor,
@@ -434,6 +474,31 @@ export class TerminalTabbedView extends Disposable {
 			getActionsContext: () => this._parentElement,
 			onHide: () => actionsDisposable.dispose()
 		});
+	}
+
+	private _getTabActions(): Action[] {
+		return [
+			new Separator(),
+			this._configurationService.inspect('terminal.integrated.tabs.location').userValue === 'left' ?
+				new Action('moveRight', localize('moveTabsRight', "Move Tabs Right"), undefined, undefined, async () => {
+					this._configurationService.updateValue('terminal.integrated.tabs.location', 'right');
+				}) :
+				new Action('moveLeft', localize('moveTabsLeft', "Move Tabs Left"), undefined, undefined, async () => {
+					this._configurationService.updateValue('terminal.integrated.tabs.location', 'left');
+				}),
+			new Action('hideTabs', localize('hideTabs', "Hide Tabs"), undefined, undefined, async () => {
+				this._configurationService.updateValue('terminal.integrated.tabs.enable', false);
+			})
+		];
+	}
+
+	public focusTabsView(): void {
+		this._terminalTabsFocusContextKey.set(true);
+		const selected = this._tabsWidget.getSelection();
+		this._tabsWidget.domFocus();
+		if (selected) {
+			this._tabsWidget.setFocus(selected);
+		}
 	}
 
 	public focusFindWidget() {
