@@ -100,7 +100,8 @@ export const terminalConfiguration: IConfigurationNode = {
 			items: {
 				type: 'string'
 			},
-			default: []
+			default: [],
+			markdownDeprecationMessage: 'This is deprecated, use `#terminal.integrated.defaultProfile.linux#` instead'
 		},
 		'terminal.integrated.shellArgs.osx': {
 			requireTrust: true,
@@ -114,7 +115,8 @@ export const terminalConfiguration: IConfigurationNode = {
 			// Unlike on Linux, ~/.profile is not sourced when logging into a macOS session. This
 			// is the reason terminals on macOS typically run login shells by default which set up
 			// the environment. See http://unix.stackexchange.com/a/119675/115410
-			default: ['-l']
+			default: ['-l'],
+			markdownDeprecationMessage: 'This is deprecated, use `#terminal.integrated.defaultProfile.osx#` instead'
 		},
 		'terminal.integrated.shellArgs.windows': {
 			requireTrust: true,
@@ -134,7 +136,8 @@ export const terminalConfiguration: IConfigurationNode = {
 					markdownDescription: localize('terminal.integrated.shellArgs.windows.string', "The command line arguments in [command-line format](https://msdn.microsoft.com/en-au/08dfcab2-eb6e-49a4-80eb-87d4076c98c6) to use when on the Windows terminal. [Read more about configuring the shell](https://code.visualstudio.com/docs/editor/integrated-terminal#_configuration).")
 				}
 			],
-			default: []
+			default: [],
+			markdownDeprecationMessage: 'This is deprecated, use `#terminal.integrated.defaultProfile.windows#` instead'
 		},
 		'terminal.integrated.profiles.windows': {
 			requireTrust: true,
@@ -319,6 +322,12 @@ export const terminalConfiguration: IConfigurationNode = {
 			enum: ['left', 'right'],
 			default: 'right',
 			description: localize('terminal.integrated.tabs.location', "Controls the location of the terminal tabs, either to the left or right of the actual terminal(s).")
+		},
+		'terminal.integrated.tabs.focusMode': {
+			type: 'string',
+			enum: ['singleClick', 'doubleClick'],
+			default: 'doubleClick',
+			description: localize('terminal.integrated.tabs.focusMode', "Controls whether focusing the terminal of a tab happens on double or single click.")
 		},
 		'terminal.integrated.macOptionIsMeta': {
 			description: localize('terminal.integrated.macOptionIsMeta', "Controls whether to treat the option key as the meta key in the terminal on macOS."),
@@ -672,7 +681,8 @@ function getTerminalShellConfigurationStub(linux: string, osx: string, windows: 
 				scope: ConfigurationScope.APPLICATION,
 				markdownDescription: linux,
 				type: ['string', 'null'],
-				default: null
+				default: null,
+				markdownDeprecationMessage: 'This is deprecated, use `#terminal.integrated.defaultProfile.linux#` instead'
 			},
 			'terminal.integrated.shell.osx': {
 				requireTrust: true,
@@ -680,7 +690,8 @@ function getTerminalShellConfigurationStub(linux: string, osx: string, windows: 
 				scope: ConfigurationScope.APPLICATION,
 				markdownDescription: osx,
 				type: ['string', 'null'],
-				default: null
+				default: null,
+				markdownDeprecationMessage: 'This is deprecated, use `#terminal.integrated.defaultProfile.osx#` instead'
 			},
 			'terminal.integrated.shell.windows': {
 				requireTrust: true,
@@ -688,7 +699,8 @@ function getTerminalShellConfigurationStub(linux: string, osx: string, windows: 
 				scope: ConfigurationScope.APPLICATION,
 				markdownDescription: windows,
 				type: ['string', 'null'],
-				default: null
+				default: null,
+				markdownDeprecationMessage: 'This is deprecated, use `#terminal.integrated.defaultProfile.windows#` instead'
 			}
 		}
 	};

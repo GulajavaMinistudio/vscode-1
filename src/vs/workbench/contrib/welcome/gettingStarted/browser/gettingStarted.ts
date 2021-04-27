@@ -385,13 +385,6 @@ export class GettingStartedPage extends EditorPane {
 			stepElement.style.height = ``;
 			stepElement.style.height = `${stepElement.scrollHeight}px`;
 
-			setTimeout(() => {
-				// Scrollheight doesn't play nicely with the -webkit-line-clamp logic, soketomes clipped even after the first scan
-				// rescan in a lil bit to help things along.
-				stepElement.style.height = ``;
-				stepElement.style.height = `${stepElement.scrollHeight}px`;
-			}, 50);
-
 			if (!this.currentCategory || this.currentCategory.content.type !== 'steps') {
 				throw Error('cannot expand step for category of non steps type' + this.currentCategory?.id);
 			}
@@ -449,7 +442,7 @@ export class GettingStartedPage extends EditorPane {
 
 	private updateMediaSourceForColorMode(element: HTMLImageElement, sources: { hc: URI, dark: URI, light: URI }) {
 		const themeType = this.themeService.getColorTheme().type;
-		element.srcset = sources[themeType].toString(true) + ' 1.5x';
+		element.srcset = sources[themeType].toString() + ' 1.5x';
 	}
 
 	private async renderMarkdown(path: URI, base: URI): Promise<string> {
