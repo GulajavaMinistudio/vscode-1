@@ -24,14 +24,14 @@ import { IFileService } from 'vs/platform/files/common/files';
 import { IOpenerService, matchesScheme } from 'vs/platform/opener/common/opener';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
+import { asWebviewUri } from 'vs/workbench/api/common/shared/webview';
 import { CellEditState, ICellOutputViewModel, ICommonCellInfo, ICommonNotebookEditor, IDisplayOutputLayoutUpdateRequest, IDisplayOutputViewModel, IGenericCellViewModel, IInsetRenderOutput, RenderOutputType } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
-import { preloadsScriptStr } from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewPreloads';
+import { preloadsScriptStr, WebviewPreloadRenderer } from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewPreloads';
 import { transformWebviewThemeVars } from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewThemeMapping';
 import { MarkdownCellViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/markdownCellViewModel';
-import { INotebookKernel, INotebookRendererInfo } from 'vs/workbench/contrib/notebook/common/notebookCommon';
+import { INotebookKernel, INotebookRendererInfo, NotebookRendererMatch } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
 import { IWebviewService, WebviewContentPurpose, WebviewElement } from 'vs/workbench/contrib/webview/browser/webview';
-import { asWebviewUri } from 'vs/workbench/contrib/webview/common/webviewUri';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
 
 interface BaseToWebviewMessage {
@@ -707,42 +707,48 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 				</script>
 				${coreDependencies}
 				<div id='container' class="widgetarea" style="position: absolute;width:100%;top: 0px"></div>
-				<script type="module">${preloadsScriptStr({
-			outputNodePadding: this.options.outputNodePadding,
-			outputNodeLeftPadding: this.options.outputNodeLeftPadding,
-		}, {
-			entrypoint: markupRenderer[0].entrypoint,
-			dependencies: markupRenderer[0].dependencies,
-		})}</script>
+				<script type="module">${preloadsScriptStr(this.options, markupRenderer)}</script>
 			</body>
 		</html>`;
 	}
 
-	private getMarkdownRenderer(): Array<{ entrypoint: string, dependencies: Array<{ entrypoint: string }> }> {
-		const allRenderers = this.notebookService.getMarkupRendererInfo();
+	private getMarkdownRenderer(): WebviewPreloadRenderer[] {
+		const markdownMimeType = 'text/markdown';
+		const allRenderers = this.notebookService.getRenderers()
+			.filter(renderer => renderer.matchesWithoutKernel(markdownMimeType) !== NotebookRendererMatch.Never);
 
 		const topLevelMarkdownRenderers = allRenderers
-			.filter(renderer => !renderer.dependsOn)
-			.filter(renderer => renderer.mimeTypes?.includes('text/markdown'));
+			.filter(renderer => renderer.dependencies.length === 0);
 
 		const subRenderers = new Map<string, Array<{ entrypoint: string }>>();
 		for (const renderer of allRenderers) {
-			if (renderer.dependsOn) {
-				if (!subRenderers.has(renderer.dependsOn)) {
-					subRenderers.set(renderer.dependsOn, []);
+			for (const dep of renderer.dependencies) {
+				if (!subRenderers.has(dep)) {
+					subRenderers.set(dep, []);
 				}
-				const entryPoint = asWebviewUri(this.environmentService, this.id, renderer.entrypoint);
-				subRenderers.get(renderer.dependsOn)!.push({ entrypoint: entryPoint.toString(true) });
+				const entryPoint = this.asWebviewUri(renderer.entrypoint, renderer.extensionLocation);
+				subRenderers.get(dep)!.push({ entrypoint: entryPoint.toString(true) });
 			}
 		}
 
-		return topLevelMarkdownRenderers.map((renderer) => {
-			const src = asWebviewUri(this.environmentService, this.id, renderer.entrypoint);
+		return topLevelMarkdownRenderers.map((renderer): WebviewPreloadRenderer => {
+			const src = this.asWebviewUri(renderer.entrypoint, renderer.extensionLocation);
 			return {
 				entrypoint: src.toString(),
+				mimeTypes: renderer.mimeTypes,
 				dependencies: subRenderers.get(renderer.id) || [],
 			};
 		});
+	}
+
+	private asWebviewUri(uri: URI, fromExtension: URI | undefined) {
+		const remoteAuthority = fromExtension?.scheme === Schemas.vscodeRemote ? fromExtension.authority : undefined;
+		return asWebviewUri({
+			isExtensionDevelopmentDebug: this.environmentService.isExtensionDevelopment,
+			webviewCspSource: this.environmentService.webviewCspSource,
+			webviewResourceRoot: this.environmentService.webviewResourceRoot,
+			remote: { authority: remoteAuthority }
+		}, this.id, uri);
 	}
 
 	postKernelMessage(message: any) {
@@ -775,11 +781,11 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 			resolveFunc = resolve;
 		});
 
-		const baseUrl = asWebviewUri(this.environmentService, this.id, dirname(this.documentUri));
+		const baseUrl = this.asWebviewUri(dirname(this.documentUri), undefined);
 
 		if (!isWeb) {
 			const loaderUri = FileAccess.asFileUri('vs/loader.js', require);
-			const loader = asWebviewUri(this.environmentService, this.id, loaderUri);
+			const loader = this.asWebviewUri(loaderUri, undefined);
 
 			coreDependencies = `<script src="${loader}"></script><script>
 			var requirejs = (function() {
@@ -1125,7 +1131,7 @@ var requirejs = (function() {
 
 		this.localResourceRootsCache = [
 			...this.notebookService.getNotebookProviderResourceRoots(),
-			...this.notebookService.getMarkupRendererInfo().map(x => dirname(x.entrypoint)),
+			...this.notebookService.getRenderers().map(x => dirname(x.entrypoint)),
 			...workspaceFolders,
 			rootPath,
 		];
@@ -1139,7 +1145,6 @@ var requirejs = (function() {
 			allowMultipleAPIAcquire: true,
 			allowScripts: true,
 			localResourceRoots: this.localResourceRootsCache,
-			useRootAuthority: true
 		}, undefined);
 
 		webview.html = content;
@@ -1566,7 +1571,7 @@ var requirejs = (function() {
 		const resources: IPreloadResource[] = [];
 		for (const preload of kernel.preloadUris) {
 			const uri = this.environmentService.isExtensionDevelopment && (preload.scheme === 'http' || preload.scheme === 'https')
-				? preload : asWebviewUri(this.environmentService, this.id, preload);
+				? preload : this.asWebviewUri(preload, undefined);
 
 			if (!this._preloadsCache.has(uri.toString())) {
 				resources.push({ uri: uri.toString(), originalUri: preload.toString(), source: 'kernel' });
@@ -1592,7 +1597,7 @@ var requirejs = (function() {
 		for (const rendererInfo of renderers) {
 			extensionLocations.push(rendererInfo.extensionLocation);
 			for (const preload of [rendererInfo.entrypoint, ...rendererInfo.preloads]) {
-				const uri = asWebviewUri(this.environmentService, this.id, preload);
+				const uri = this.asWebviewUri(preload, rendererInfo.extensionLocation);
 				const resource: IPreloadResource = {
 					uri: uri.toString(),
 					originalUri: preload.toString(),

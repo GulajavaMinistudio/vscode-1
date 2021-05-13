@@ -393,6 +393,25 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * A message regarding a completed search.
+	 */
+	export interface TextSearchCompleteMessage {
+		/**
+		 * Markdown text of the message.
+		 */
+		text: string,
+		/**
+		 * Whether the source of the message is trusted, command links are disabled for untrusted message sources.
+		 * Messaged are untrusted by default.
+		 */
+		trusted?: boolean,
+		/**
+		 * The message type, this affects how the message will be rendered.
+		 */
+		type: TextSearchCompleteMessageType,
+	}
+
+	/**
 	 * Information collected when text search is complete.
 	 */
 	export interface TextSearchComplete {
@@ -411,8 +430,10 @@ declare module 'vscode' {
 		 * Messages with "Information" tyle support links in markdown syntax:
 		 * - Click to [run a command](command:workbench.action.OpenQuickPick)
 		 * - Click to [open a website](https://aka.ms)
+		 *
+		 * Commands may optionally return { triggerSearch: true } to signal to VS Code that the original search should run be agian.
 		 */
-		message?: { text: string, type: TextSearchCompleteMessageType } | { text: string, type: TextSearchCompleteMessageType }[];
+		message?: TextSearchCompleteMessage | TextSearchCompleteMessage[];
 	}
 
 	/**
@@ -1071,8 +1092,10 @@ declare module 'vscode' {
 		 */
 		readonly outputs: ReadonlyArray<NotebookCellOutput>;
 
-		// todo@API maybe just executionSummary or lastExecutionSummary?
-		readonly latestExecutionSummary: NotebookCellExecutionSummary | undefined;
+		/**
+		 * The most recent {@link NotebookCellExecutionSummary excution summary} for this cell.
+		 */
+		readonly executionSummary?: NotebookCellExecutionSummary;
 	}
 
 	/**
@@ -1269,9 +1292,17 @@ declare module 'vscode' {
 		// static textplain(value:string): NotebookCellOutputItem;
 		// static errortrace(value:any): NotebookCellOutputItem;
 
+		/**
+		 * Creates `application/x.notebook.error`
+		 *
+		 * @param err An error for which an output item is wanted
+		 */
+		static error(err: Error): NotebookCellOutputItem;
+
 		mime: string;
 
 		//todo@API string or Unit8Array?
+		// value: string | Uint8Array | unknown;
 		value: unknown;
 
 		metadata?: { [key: string]: any };
@@ -1320,8 +1351,10 @@ declare module 'vscode' {
 		 */
 		metadata?: NotebookCellMetadata;
 
-		// todo@API just executionSummary or lastExecutionSummary
-		latestExecutionSummary?: NotebookCellExecutionSummary;
+		/**
+		 * The execution summary of this cell data.
+		 */
+		executionSummary?: NotebookCellExecutionSummary;
 
 		/**
 		 * Create new cell data. Minimal cell data specifies its kind, its source value, and the
@@ -1332,9 +1365,9 @@ declare module 'vscode' {
 		 * @param languageId The language identifier of the source value.
 		 * @param outputs //TODO@API remove ctor?
 		 * @param metadata //TODO@API remove ctor?
-		 * @param latestExecutionSummary //TODO@API remove ctor?
+		 * @param executionSummary //TODO@API remove ctor?
 		 */
-		constructor(kind: NotebookCellKind, value: string, languageId: string, outputs?: NotebookCellOutput[], metadata?: NotebookCellMetadata, latestExecutionSummary?: NotebookCellExecutionSummary);
+		constructor(kind: NotebookCellKind, value: string, languageId: string, outputs?: NotebookCellOutput[], metadata?: NotebookCellMetadata, executionSummary?: NotebookCellExecutionSummary);
 	}
 
 	/**
@@ -1686,7 +1719,45 @@ declare module 'vscode' {
 	export namespace notebook {
 
 		/**
+		 * All notebook documents currently known to the editor.
+		 */
+		export const notebookDocuments: ReadonlyArray<NotebookDocument>;
+
+		/**
+		 * Open a notebook. Will return early if this notebook is already {@link notebook.notebookDocuments loaded}. Otherwise
+		 * the notebook is loaded and the {@link notebook.onDidOpenNotebookDocument `onDidOpenNotebookDocument`}-event fires.
+		 *
+		 * *Note* that the lifecycle of the returned notebook is owned by the editor and not by the extension. That means an
+		 * {@link notebook.onDidCloseNotebookDocument `onDidCloseNotebookDocument`}-event can occur at any time after.
+		 *
+		 * *Note* that opening a notebook does not show a notebook editor. This function only returns a notebook document which
+		 * can be showns in a notebook editor but it can also be used for other things.
+		 *
+		 * @param uri The resource to open.
+		 * @returns A promise that resolves to a {@link NotebookDocument notebook}
+		 */
+		export function openNotebookDocument(uri: Uri): Thenable<NotebookDocument>;
+
+		/**
+		 * An event that is emitted when a {@link NotebookDocument notebook} is opened.
+		 */
+		export const onDidOpenNotebookDocument: Event<NotebookDocument>;
+
+		/**
+		 * An event that is emitted when a {@link NotebookDocument notebook} is disposed.
+		 *
+		 * *Note 1:* There is no guarantee that this event fires when an editor tab is closed.
+		 *
+		 * *Note 2:* A notebook can be open but not shown in an editor which means this event can fire
+		 * for a notebook that has not been shown in an editor.
+		 */
+		export const onDidCloseNotebookDocument: Event<NotebookDocument>;
+
+		/**
 		 * Register a {@link NotebookSerializer notebook serializer}.
+		 *
+		 * A notebook serializer must to be contributed through the `notebooks` extension point. When opening a notebook file, the editor will send
+		 * the `onNotebook:<notebookType>` activation event, and extensions must register their serializer in return.
 		 *
 		 * @param notebookType A notebook.
 		 * @param serializer A notebook serialzier.
@@ -1839,17 +1910,10 @@ declare module 'vscode' {
 
 	export namespace notebook {
 
-		export function openNotebookDocument(uri: Uri): Thenable<NotebookDocument>;
 
-		export const onDidOpenNotebookDocument: Event<NotebookDocument>;
-		export const onDidCloseNotebookDocument: Event<NotebookDocument>;
 
 		export const onDidSaveNotebookDocument: Event<NotebookDocument>;
 
-		/**
-		 * All currently known notebook documents.
-		 */
-		export const notebookDocuments: ReadonlyArray<NotebookDocument>;
 		export const onDidChangeNotebookDocumentMetadata: Event<NotebookDocumentMetadataChangeEvent>;
 		export const onDidChangeNotebookCells: Event<NotebookCellsChangeEvent>;
 
@@ -1922,82 +1986,6 @@ declare module 'vscode' {
 
 	//#endregion
 
-	//#region https://github.com/microsoft/vscode/issues/106744, NotebookContentProvider
-
-
-	interface NotebookDocumentBackup {
-		/**
-		 * Unique identifier for the backup.
-		 *
-		 * This id is passed back to your extension in `openNotebook` when opening a notebook editor from a backup.
-		 */
-		readonly id: string;
-
-		/**
-		 * Delete the current backup.
-		 *
-		 * This is called by VS Code when it is clear the current backup is no longer needed, such as when a new backup
-		 * is made or when the file is saved.
-		 */
-		delete(): void;
-	}
-
-	interface NotebookDocumentBackupContext {
-		readonly destination: Uri;
-	}
-
-	interface NotebookDocumentOpenContext {
-		readonly backupId?: string;
-		readonly untitledDocumentData?: Uint8Array;
-	}
-
-	// todo@API use openNotebookDOCUMENT to align with openCustomDocument etc?
-	// todo@API rename to NotebookDocumentContentProvider
-	export interface NotebookContentProvider {
-
-		readonly options?: NotebookDocumentContentOptions;
-		readonly onDidChangeNotebookContentOptions?: Event<NotebookDocumentContentOptions>;
-
-		/**
-		 * Content providers should always use {@link FileSystemProvider file system providers} to
-		 * resolve the raw content for `uri` as the resouce is not necessarily a file on disk.
-		 */
-		openNotebook(uri: Uri, openContext: NotebookDocumentOpenContext, token: CancellationToken): NotebookData | Thenable<NotebookData>;
-
-		// todo@API use NotebookData instead
-		saveNotebook(document: NotebookDocument, token: CancellationToken): Thenable<void>;
-
-		// todo@API use NotebookData instead
-		saveNotebookAs(targetResource: Uri, document: NotebookDocument, token: CancellationToken): Thenable<void>;
-
-		// todo@API use NotebookData instead
-		backupNotebook(document: NotebookDocument, context: NotebookDocumentBackupContext, token: CancellationToken): Thenable<NotebookDocumentBackup>;
-	}
-
-	/**
-	 * todo@API Not ready for production or development use yet.
-	 */
-	export interface NotebookRegistrationData {
-		displayName: string;
-		filenamePattern: (GlobPattern | { include: GlobPattern; exclude: GlobPattern; })[];
-		exclusive?: boolean;
-	}
-
-	export namespace notebook {
-
-		// TODO@api use NotebookDocumentFilter instead of just notebookType:string?
-		// TODO@API options duplicates the more powerful variant on NotebookContentProvider
-		export function registerNotebookContentProvider(notebookType: string, provider: NotebookContentProvider, options?: NotebookDocumentContentOptions): Disposable;
-
-		// SPECIAL overload with _NotebookRegistrationData
-		export function registerNotebookContentProvider(notebookType: string, provider: NotebookContentProvider, options?: NotebookDocumentContentOptions, registrationData?: NotebookRegistrationData): Disposable;
-
-		// SPECIAL overload with _NotebookRegistrationData
-		export function registerNotebookSerializer(notebookType: string, serializer: NotebookSerializer, options?: NotebookDocumentContentOptions, registration?: NotebookRegistrationData): Disposable;
-	}
-
-	//#endregion
-
 	//#region https://github.com/microsoft/vscode/issues/106744, NotebookEditorDecorationType
 
 	export interface NotebookEditor {
@@ -2052,6 +2040,84 @@ declare module 'vscode' {
 		locationAt(positionOrRange: Position | Range): Location;
 		positionAt(location: Location): Position;
 		contains(uri: Uri): boolean;
+	}
+
+	//#endregion
+
+	//#region https://github.com/microsoft/vscode/issues/106744, NotebookContentProvider
+
+
+	interface NotebookDocumentBackup {
+		/**
+		 * Unique identifier for the backup.
+		 *
+		 * This id is passed back to your extension in `openNotebook` when opening a notebook editor from a backup.
+		 */
+		readonly id: string;
+
+		/**
+		 * Delete the current backup.
+		 *
+		 * This is called by VS Code when it is clear the current backup is no longer needed, such as when a new backup
+		 * is made or when the file is saved.
+		 */
+		delete(): void;
+	}
+
+	interface NotebookDocumentBackupContext {
+		readonly destination: Uri;
+	}
+
+	interface NotebookDocumentOpenContext {
+		readonly backupId?: string;
+		readonly untitledDocumentData?: Uint8Array;
+	}
+
+	// todo@API use openNotebookDOCUMENT to align with openCustomDocument etc?
+	// todo@API rename to NotebookDocumentContentProvider
+	export interface NotebookContentProvider {
+
+		readonly options?: NotebookDocumentContentOptions;
+		readonly onDidChangeNotebookContentOptions?: Event<NotebookDocumentContentOptions>;
+
+		/**
+		 * Content providers should always use {@link FileSystemProvider file system providers} to
+		 * resolve the raw content for `uri` as the resouce is not necessarily a file on disk.
+		 */
+		openNotebook(uri: Uri, openContext: NotebookDocumentOpenContext, token: CancellationToken): NotebookData | Thenable<NotebookData>;
+
+		// todo@API use NotebookData instead
+		saveNotebook(document: NotebookDocument, token: CancellationToken): Thenable<void>;
+
+		// todo@API use NotebookData instead
+		saveNotebookAs(targetResource: Uri, document: NotebookDocument, token: CancellationToken): Thenable<void>;
+
+		// todo@API use NotebookData instead
+		backupNotebook(document: NotebookDocument, context: NotebookDocumentBackupContext, token: CancellationToken): Thenable<NotebookDocumentBackup>;
+	}
+
+	export namespace notebook {
+
+		// TODO@api use NotebookDocumentFilter instead of just notebookType:string?
+		// TODO@API options duplicates the more powerful variant on NotebookContentProvider
+		export function registerNotebookContentProvider(notebookType: string, provider: NotebookContentProvider, options?: NotebookDocumentContentOptions): Disposable;
+	}
+
+	//#endregion
+
+	//#region https://github.com/microsoft/vscode/issues/106744, LiveShare
+
+	export interface NotebookRegistrationData {
+		displayName: string;
+		filenamePattern: (GlobPattern | { include: GlobPattern; exclude: GlobPattern; })[];
+		exclusive?: boolean;
+	}
+
+	export namespace notebook {
+		// SPECIAL overload with NotebookRegistrationData
+		export function registerNotebookContentProvider(notebookType: string, provider: NotebookContentProvider, options?: NotebookDocumentContentOptions, registrationData?: NotebookRegistrationData): Disposable;
+		// SPECIAL overload with NotebookRegistrationData
+		export function registerNotebookSerializer(notebookType: string, serializer: NotebookSerializer, options?: NotebookDocumentContentOptions, registration?: NotebookRegistrationData): Disposable;
 	}
 
 	//#endregion
@@ -3127,6 +3193,7 @@ declare module 'vscode' {
 	export interface OpenEditorInfo {
 		name: string;
 		resource: Uri;
+		isActive: boolean;
 	}
 
 	export namespace window {
@@ -3224,6 +3291,30 @@ declare module 'vscode' {
 		 * Sets focus to the input.
 		 */
 		focus(): void;
+	}
+
+	//#endregion
+
+	//#region FileSystemProvider stat readonly - https://github.com/microsoft/vscode/issues/73122
+
+	export enum FilePermission {
+		/**
+		 * The file is readonly.
+		 */
+		Readonly = 1
+	}
+
+	/**
+	 * The `FileStat`-type represents metadata about a file
+	 */
+	export interface FileStat {
+
+		/**
+		 * The permissions of the file, e.g. whether the file is readonly.
+		 *
+		 * *Note:* This value might be a bitmask, e.g. `FilePermission.Readonly | FilePermission.Other`.
+		 */
+		permissions?: FilePermission;
 	}
 
 	//#endregion

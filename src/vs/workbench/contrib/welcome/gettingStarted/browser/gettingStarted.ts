@@ -56,9 +56,9 @@ import { generateTokensCSSForColorMap } from 'vs/editor/common/modes/supports/to
 import { ResourceMap } from 'vs/base/common/map';
 import { IFileService } from 'vs/platform/files/common/files';
 import { joinPath } from 'vs/base/common/resources';
-import { asWebviewUri } from 'vs/workbench/contrib/webview/common/webviewUri';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
 import { INotificationService } from 'vs/platform/notification/common/notification';
+import { asWebviewUri } from 'vs/workbench/api/common/shared/webview';
 
 const SLIDE_TRANSITION_TIME_MS = 250;
 const configurationKey = 'workbench.startupEditor';
@@ -460,6 +460,7 @@ export class GettingStartedPage extends EditorPane {
 			stepElement.classList.add('expanded');
 			stepElement.setAttribute('aria-expanded', 'true');
 			this.buildMediaComponent(id);
+			this.gettingStartedService.progressByEvent('stepSelected:' + id);
 		} else {
 			this.editorInput.selectedStep = undefined;
 		}
@@ -486,7 +487,12 @@ export class GettingStartedPage extends EditorPane {
 			if (src.startsWith('https://')) { return `src="${src}"`; }
 
 			const path = joinPath(base, src);
-			const transformed = asWebviewUri(this.environmentService, this.webviewID, path).toString();
+			const transformed = asWebviewUri({
+				isExtensionDevelopmentDebug: this.environmentService.isExtensionDevelopment,
+				webviewResourceRoot: this.environmentService.webviewResourceRoot,
+				webviewCspSource: this.environmentService.webviewCspSource,
+				remote: { authority: undefined },
+			}, this.webviewID, path).toString();
 			return `src="${transformed}"`;
 		});
 
@@ -885,6 +891,10 @@ export class GettingStartedPage extends EditorPane {
 					}
 					this.openerService.open(command, { allowCommands: true });
 
+					if (!isCommand && node.href.startsWith('https://')) {
+						this.gettingStartedService.progressByEvent('onLink:' + node.href);
+					}
+
 				}, null, this.detailsPageDisposables);
 
 				if (isCommand) {
@@ -902,7 +912,7 @@ export class GettingStartedPage extends EditorPane {
 					if (typeof node === 'string') {
 						append(p, renderFormattedText(node, { inline: true, renderCodeSegements: true }));
 					} else {
-						const link = this.instantiationService.createInstance(Link, node);
+						const link = this.instantiationService.createInstance(Link, node, {});
 
 						append(p, link.el);
 						this.detailsPageDisposables.add(link);
