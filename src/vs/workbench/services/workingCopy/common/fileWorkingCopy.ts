@@ -7,7 +7,6 @@ import { localize } from 'vs/nls';
 import { URI } from 'vs/base/common/uri';
 import { Event, Emitter } from 'vs/base/common/event';
 import { CancellationToken, CancellationTokenSource } from 'vs/base/common/cancellation';
-import { IDisposable } from 'vs/base/common/lifecycle';
 import { ETAG_DISABLED, FileOperationError, FileOperationResult, FileSystemProviderCapabilities, IFileService, IFileStatWithMetadata, IFileStreamContent, IWriteFileOptions } from 'vs/platform/files/common/files';
 import { ISaveOptions, IRevertOptions, SaveReason } from 'vs/workbench/common/editor';
 import { IWorkingCopyService } from 'vs/workbench/services/workingCopy/common/workingCopyService';
@@ -28,23 +27,12 @@ import { IWorkingCopyEditorService } from 'vs/workbench/services/workingCopy/com
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IElevatedFileService } from 'vs/workbench/services/files/common/elevatedFileService';
 import { IResourceWorkingCopy, ResourceWorkingCopy } from 'vs/workbench/services/workingCopy/common/resourceWorkingCopy';
+import { IBaseFileWorkingCopy, IBaseFileWorkingCopyModel, IBaseFileWorkingCopyModelFactory } from 'vs/workbench/services/workingCopy/common/abstractFileWorkingCopy';
 
-export interface IFileWorkingCopyModelFactory<T extends IFileWorkingCopyModel> {
-
-	/**
-	 * Asks the file working copy delegate to create a model from the given
-	 * content under the provided resource. The content may originate from
-	 * different sources depending on context:
-	 * - from a backup if that exists
-	 * - from the underlying file resource
-	 * - passed in from the caller
-	 *
-	 * @param resource the `URI` of the model
-	 * @param contents the content of the model to create it
-	 * @param token support for cancellation
-	 */
-	createModel(resource: URI, contents: VSBufferReadableStream, token: CancellationToken): Promise<T>;
-}
+/**
+ * File specific working copy model factory.
+ */
+export interface IFileWorkingCopyModelFactory<M extends IFileWorkingCopyModel> extends IBaseFileWorkingCopyModelFactory<M> { }
 
 /**
  * The underlying model of a file working copy provides some
@@ -52,29 +40,9 @@ export interface IFileWorkingCopyModelFactory<T extends IFileWorkingCopyModel> {
  * typically only available after the working copy has been
  * resolved via it's `resolve()` method.
  */
-export interface IFileWorkingCopyModel extends IDisposable {
+export interface IFileWorkingCopyModel extends IBaseFileWorkingCopyModel {
 
-	/**
-	 * This event signals ANY changes to the contents of the file
-	 * working copy model, for example:
-	 * - through the user typing into the editor
-	 * - from API usage (e.g. bulk edits)
-	 * - when `IFileWorkingCopyModel#update` is invoked with contents
-	 *   that are different from the current contents
-	 *
-	 * The file working copy will listen to these changes and mark
-	 * the working copy as dirty whenever this event fires.
-	 *
-	 * Note: ONLY report changes to the model but not the underlying
-	 * file. The file working copy is tracking changes to the file
-	 * automatically.
-	 */
 	readonly onDidChangeContent: Event<IFileWorkingCopyModelContentChangedEvent>;
-
-	/**
-	 * An event emitted right before disposing the model.
-	 */
-	readonly onWillDispose: Event<void>;
 
 	/**
 	 * A version ID of the model. If a `onDidChangeContent` is fired
@@ -90,28 +58,6 @@ export interface IFileWorkingCopyModel extends IDisposable {
 	 * This requires the model to be aware of undo/redo operations.
 	 */
 	readonly versionId: unknown;
-
-	/**
-	 * Snapshots the model's current content for writing. This must include
-	 * any changes that were made to the model that are in memory.
-	 *
-	 * @param token support for cancellation
-	 */
-	snapshot(token: CancellationToken): Promise<VSBufferReadableStream>;
-
-	/**
-	 * Updates the model with the provided contents. The implementation should
-	 * behave in a similar fashion as `IFileWorkingCopyModelFactory#createModel`
-	 * except that here the model already exists and just needs to update to
-	 * the provided contents.
-	 *
-	 * Note: it is expected that the model fires a `onDidChangeContent` event
-	 * as part of the update.
-	 *
-	 * @param the contents to use for the model
-	 * @param token support for cancellation
-	 */
-	update(contents: VSBufferReadableStream, token: CancellationToken): Promise<void>;
 
 	/**
 	 * Close the current undo-redo element. This offers a way
@@ -143,7 +89,7 @@ export interface IFileWorkingCopyModelContentChangedEvent {
  * of functionality can be built on top, such as saving in
  * a secure way to prevent data loss.
  */
-export interface IFileWorkingCopy<T extends IFileWorkingCopyModel> extends IResourceWorkingCopy {
+export interface IFileWorkingCopy<M extends IFileWorkingCopyModel> extends IResourceWorkingCopy, IBaseFileWorkingCopy<M> {
 
 	/**
 	 * An event for when a file working copy was resolved.
@@ -161,21 +107,9 @@ export interface IFileWorkingCopy<T extends IFileWorkingCopyModel> extends IReso
 	readonly onDidSaveError: Event<void>;
 
 	/**
-	 * An event for when the file working copy was reverted.
-	 */
-	readonly onDidRevert: Event<void>;
-
-	/**
 	 * An event for when the readonly state of the file working copy changes.
 	 */
 	readonly onDidChangeReadonly: Event<void>;
-
-	/**
-	 * Provides access to the underlying model of this file
-	 * based working copy. As long as the file working copy
-	 * has not been resolved, the model is `undefined`.
-	 */
-	readonly model: T | undefined;
 
 	/**
 	 * Resolves a file working copy.
@@ -206,7 +140,7 @@ export interface IFileWorkingCopy<T extends IFileWorkingCopyModel> extends IReso
 	/**
 	 * Whether we have a resolved model or not.
 	 */
-	isResolved(): this is IResolvedFileWorkingCopy<T>;
+	isResolved(): this is IResolvedFileWorkingCopy<M>;
 
 	/**
 	 * Whether the file working copy is readonly or not.
@@ -214,12 +148,12 @@ export interface IFileWorkingCopy<T extends IFileWorkingCopyModel> extends IReso
 	isReadonly(): boolean;
 }
 
-export interface IResolvedFileWorkingCopy<T extends IFileWorkingCopyModel> extends IFileWorkingCopy<T> {
+export interface IResolvedFileWorkingCopy<M extends IFileWorkingCopyModel> extends IFileWorkingCopy<M> {
 
 	/**
-	 * A resolved file working copy has a resolved model `T`.
+	 * A resolved file working copy has a resolved model.
 	 */
-	readonly model: T;
+	readonly model: M;
 }
 
 /**
@@ -321,12 +255,12 @@ interface IFileWorkingCopyBackupMetaData extends IWorkingCopyBackupMeta {
 	orphaned: boolean;
 }
 
-export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWorkingCopy implements IFileWorkingCopy<T>  {
+export class FileWorkingCopy<M extends IFileWorkingCopyModel> extends ResourceWorkingCopy implements IFileWorkingCopy<M>  {
 
 	readonly capabilities: WorkingCopyCapabilities = WorkingCopyCapabilities.None;
 
-	private _model: T | undefined = undefined;
-	get model(): T | undefined { return this._model; }
+	private _model: M | undefined = undefined;
+	get model(): M | undefined { return this._model; }
 
 	//#region events
 
@@ -357,7 +291,7 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 		readonly typeId: string,
 		resource: URI,
 		readonly name: string,
-		private readonly modelFactory: IFileWorkingCopyModelFactory<T>,
+		private readonly modelFactory: IFileWorkingCopyModelFactory<M>,
 		@IFileService fileService: IFileService,
 		@ILogService private readonly logService: ILogService,
 		@ITextFileService private readonly textFileService: ITextFileService,
@@ -384,7 +318,7 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 	private dirty = false;
 	private savedVersionId: unknown;
 
-	isDirty(): this is IResolvedFileWorkingCopy<T> {
+	isDirty(): this is IResolvedFileWorkingCopy<M> {
 		return this.dirty;
 	}
 
@@ -444,6 +378,10 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 	//#region Resolve
 
 	private lastResolvedFileStat: IFileStatWithMetadata | undefined;
+
+	isResolved(): this is IResolvedFileWorkingCopy<M> {
+		return !!this.model;
+	}
 
 	async resolve(options?: IFileWorkingCopyResolveOptions): Promise<void> {
 		this.trace('[file working copy] resolve() - enter');
@@ -702,7 +640,7 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 		}
 	}
 
-	private installModelListeners(model: IFileWorkingCopyModel): void {
+	private installModelListeners(model: M): void {
 
 		// See https://github.com/microsoft/vscode/issues/30189
 		// This code has been extracted to a different method because it caused a memory leak
@@ -715,7 +653,7 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 		this._register(model.onWillDispose(() => this.dispose()));
 	}
 
-	private onModelContentChanged(model: IFileWorkingCopyModel, isUndoingOrRedoing: boolean): void {
+	private onModelContentChanged(model: M, isUndoingOrRedoing: boolean): void {
 		this.trace(`[file working copy] onModelContentChanged() - enter`);
 
 		// In any case increment the version id because it tracks the textual content state of the model at all times
@@ -1172,6 +1110,8 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 			return; // ignore if not resolved or not dirty and not enforced
 		}
 
+		this.trace('[file working copy] revert()');
+
 		// Unset flags
 		const wasDirty = this.dirty;
 		const undoSetDirty = this.doSetDirty(false);
@@ -1234,10 +1174,6 @@ export class FileWorkingCopy<T extends IFileWorkingCopyModel> extends ResourceWo
 	//#endregion
 
 	//#region Utilities
-
-	isResolved(): this is IResolvedFileWorkingCopy<T> {
-		return !!this.model;
-	}
 
 	isReadonly(): boolean {
 		return this.lastResolvedFileStat?.readonly || this.fileService.hasCapability(this.resource, FileSystemProviderCapabilities.Readonly);

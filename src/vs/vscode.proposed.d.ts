@@ -938,51 +938,6 @@ declare module 'vscode' {
 	}
 	//#endregion
 
-	//#region Status bar item with ID and Name: https://github.com/microsoft/vscode/issues/74972
-
-	/**
-	 * Options to configure the status bar item.
-	 */
-	export interface StatusBarItemOptions {
-
-		/**
-		 * An identifier for the item that should be unique.
-		 */
-		id: string;
-
-		/**
-		 * A human readable name of the item that explains the purpose
-		 * of the item to the user.
-		 */
-		name: string;
-
-		/**
-		 * The alignment of the item.
-		 */
-		alignment?: StatusBarAlignment;
-
-		/**
-		 * The priority of the item. Higher values mean the item should be shown more to the left.
-		 */
-		priority?: number;
-	}
-
-	export namespace window {
-
-		/**
-		 * Creates a status bar {@link StatusBarItem item}.
-		 *
-		 * @param options The options of the item. If not provided, some default values
-		 * will be assumed. For example, the {@link StatusBarItemOptions.id `StatusBarItemOptions.id`}
-		 * will be the id of the extension and the {@link StatusBarItemOptions.name `StatusBarItemOptions.name`}
-		 * will be the extension name.
-		 * @return A new status bar item.
-		 */
-		export function createStatusBarItem(options?: StatusBarItemOptions): StatusBarItem;
-	}
-
-	//#endregion
-
 	//#region Custom editor move https://github.com/microsoft/vscode/issues/86146
 
 	// TODO: Also for custom editor
@@ -1721,6 +1676,17 @@ declare module 'vscode' {
 		 * @returns A promise that resolves to a {@link NotebookDocument notebook}
 		 */
 		export function openNotebookDocument(uri: Uri): Thenable<NotebookDocument>;
+
+		/**
+		 * Open an untitled notebook. The editor will prompt the user for a file
+		 * path when the document is to be saved.
+		 *
+		 * @see {@link openNotebookDocument}
+		 * @param viewType The notebook view type that should be used.
+		 * @param content The initial contents of the notebook.
+		 * @returns A promise that resolves to a {@link NotebookDocument notebook}.
+		 */
+		export function openNotebookDocument(viewType: string, content?: NotebookData): Thenable<NotebookDocument>;
 
 		/**
 		 * An event that is emitted when a {@link NotebookDocument notebook} is opened.
