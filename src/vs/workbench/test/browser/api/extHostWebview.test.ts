@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
+import { Schemas } from 'vs/base/common/network';
 import { URI } from 'vs/base/common/uri';
 import { mock } from 'vs/base/test/common/mock';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
@@ -14,6 +15,7 @@ import { NullApiDeprecationService } from 'vs/workbench/api/common/extHostApiDep
 import { IExtHostRpcService } from 'vs/workbench/api/common/extHostRpcService';
 import { ExtHostWebviews } from 'vs/workbench/api/common/extHostWebview';
 import { ExtHostWebviewPanels } from 'vs/workbench/api/common/extHostWebviewPanels';
+import { webviewResourceBaseHost } from 'vs/workbench/api/common/shared/webview';
 import { EditorGroupColumn } from 'vs/workbench/common/editor';
 import type * as vscode from 'vscode';
 import { SingleProxyRPCProtocol } from './testRPCProtocol';
@@ -30,7 +32,7 @@ suite('ExtHostWebview', () => {
 	test('Cannot register multiple serializers for the same view type', async () => {
 		const viewType = 'view.type';
 
-		const extHostWebviews = new ExtHostWebviews(rpcProtocol!, { remote: { authority: undefined } }, undefined, new NullLogService(), NullApiDeprecationService);
+		const extHostWebviews = new ExtHostWebviews(rpcProtocol!, { remote: { authority: undefined, isRemote: false } }, undefined, new NullLogService(), NullApiDeprecationService);
 
 		const extHostWebviewPanels = new ExtHostWebviewPanels(rpcProtocol!, extHostWebviews, undefined);
 
@@ -78,32 +80,32 @@ suite('ExtHostWebview', () => {
 		const webview = createWebview(rpcProtocol, /* remoteAuthority */undefined);
 
 		assert.strictEqual(
-			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html')).toString()),
-			'vscode-webview-test.com/vscode-resource/file//Users/codey/file.html',
+			(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html')).toString()),
+			`https://file%2B.vscode-resource.${webviewResourceBaseHost}/Users/codey/file.html`,
 			'Unix basic'
 		);
 
 		assert.strictEqual(
-			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html#frag')).toString()),
-			'vscode-webview-test.com/vscode-resource/file//Users/codey/file.html#frag',
+			(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html#frag')).toString()),
+			`https://file%2B.vscode-resource.${webviewResourceBaseHost}/Users/codey/file.html#frag`,
 			'Unix should preserve fragment'
 		);
 
 		assert.strictEqual(
-			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/f%20ile.html')).toString()),
-			'vscode-webview-test.com/vscode-resource/file//Users/codey/f%20ile.html',
+			(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/f%20ile.html')).toString()),
+			`https://file%2B.vscode-resource.${webviewResourceBaseHost}/Users/codey/f%20ile.html`,
 			'Unix with encoding'
 		);
 
 		assert.strictEqual(
-			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file://localhost/Users/codey/file.html')).toString()),
-			'vscode-webview-test.com/vscode-resource/file/localhost/Users/codey/file.html',
+			(webview.webview.asWebviewUri(URI.parse('file://localhost/Users/codey/file.html')).toString()),
+			`https://file%2Blocalhost.vscode-resource.${webviewResourceBaseHost}/Users/codey/file.html`,
 			'Unix should preserve authority'
 		);
 
 		assert.strictEqual(
-			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///c:/codey/file.txt')).toString()),
-			'vscode-webview-test.com/vscode-resource/file//c%3A/codey/file.txt',
+			(webview.webview.asWebviewUri(URI.parse('file:///c:/codey/file.txt')).toString()),
+			`https://file%2B.vscode-resource.${webviewResourceBaseHost}/c%3A/codey/file.txt`,
 			'Windows C drive'
 		);
 	});
@@ -112,8 +114,8 @@ suite('ExtHostWebview', () => {
 		const webview = createWebview(rpcProtocol, /* remoteAuthority */ 'remote');
 
 		assert.strictEqual(
-			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html')).toString()),
-			'vscode-webview-test.com/vscode-resource/vscode-remote/remote/Users/codey/file.html',
+			(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html')).toString()),
+			`https://vscode-remote%2Bremote.vscode-resource.${webviewResourceBaseHost}/Users/codey/file.html`,
 			'Unix basic'
 		);
 	});
@@ -122,18 +124,21 @@ suite('ExtHostWebview', () => {
 function createWebview(rpcProtocol: (IExtHostRpcService & IExtHostContext) | undefined, remoteAuthority: string | undefined) {
 	const extHostWebviews = new ExtHostWebviews(rpcProtocol!, {
 		remote: {
-			authority: remoteAuthority
+			authority: remoteAuthority,
+			isRemote: !!remoteAuthority,
 		},
 	}, undefined, new NullLogService(), NullApiDeprecationService);
 
 	const extHostWebviewPanels = new ExtHostWebviewPanels(rpcProtocol!, extHostWebviews, undefined);
 
-	const webview = extHostWebviewPanels.createWebviewPanel({} as IExtensionDescription, 'type', 'title', 1, {});
+	const webview = extHostWebviewPanels.createWebviewPanel({
+		extensionLocation: URI.from({
+			scheme: remoteAuthority ? Schemas.vscodeRemote : Schemas.file,
+			authority: remoteAuthority,
+			path: '/ext/path',
+		})
+	} as IExtensionDescription, 'type', 'title', 1, {});
 	return webview;
-}
-
-function stripEndpointUuid(input: string) {
-	return input.replace(/^https:\/\/[^\.]+?\./, '');
 }
 
 

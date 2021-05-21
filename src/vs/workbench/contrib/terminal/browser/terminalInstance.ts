@@ -21,10 +21,10 @@ import { ILogService } from 'vs/platform/log/common/log';
 import { INotificationService, IPromptChoice, Severity } from 'vs/platform/notification/common/notification';
 import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
 import { activeContrastBorder, scrollbarSliderActiveBackground, scrollbarSliderBackground, scrollbarSliderHoverBackground } from 'vs/platform/theme/common/colorRegistry';
-import { ICssStyleCollector, IColorTheme, IThemeService, registerThemingParticipant, ThemeIcon } from 'vs/platform/theme/common/themeService';
+import { ICssStyleCollector, IColorTheme, IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import { PANEL_BACKGROUND, SIDE_BAR_BACKGROUND } from 'vs/workbench/common/theme';
 import { TerminalWidgetManager } from 'vs/workbench/contrib/terminal/browser/widgets/widgetManager';
-import { ITerminalProcessManager, KEYBINDING_CONTEXT_TERMINAL_TEXT_SELECTED, NEVER_MEASURE_RENDER_TIME_STORAGE_KEY, ProcessState, TERMINAL_VIEW_ID, KEYBINDING_CONTEXT_TERMINAL_A11Y_TREE_FOCUS, INavigationMode, TitleEventSource, DEFAULT_COMMANDS_TO_SKIP_SHELL, TERMINAL_CREATION_COMMANDS, KEYBINDING_CONTEXT_TERMINAL_ALT_BUFFER_ACTIVE, SUGGESTED_RENDERER_TYPE, ITerminalProfileResolverService } from 'vs/workbench/contrib/terminal/common/terminal';
+import { ITerminalProcessManager, KEYBINDING_CONTEXT_TERMINAL_TEXT_SELECTED, NEVER_MEASURE_RENDER_TIME_STORAGE_KEY, ProcessState, TERMINAL_VIEW_ID, KEYBINDING_CONTEXT_TERMINAL_A11Y_TREE_FOCUS, INavigationMode, DEFAULT_COMMANDS_TO_SKIP_SHELL, TERMINAL_CREATION_COMMANDS, KEYBINDING_CONTEXT_TERMINAL_ALT_BUFFER_ACTIVE, SUGGESTED_RENDERER_TYPE, ITerminalProfileResolverService } from 'vs/workbench/contrib/terminal/common/terminal';
 import { ansiColorIdentifiers, ansiColorMap, TERMINAL_BACKGROUND_COLOR, TERMINAL_CURSOR_BACKGROUND_COLOR, TERMINAL_CURSOR_FOREGROUND_COLOR, TERMINAL_FOREGROUND_COLOR, TERMINAL_SELECTION_BACKGROUND_COLOR } from 'vs/workbench/contrib/terminal/common/terminalColorRegistry';
 import { TerminalConfigHelper } from 'vs/workbench/contrib/terminal/browser/terminalConfigHelper';
 import { TerminalLinkManager } from 'vs/workbench/contrib/terminal/browser/links/terminalLinkManager';
@@ -46,7 +46,7 @@ import { TypeAheadAddon } from 'vs/workbench/contrib/terminal/browser/terminalTy
 import { BrowserFeatures } from 'vs/base/browser/canIUse';
 import { IPreferencesService } from 'vs/workbench/services/preferences/common/preferences';
 import { IEnvironmentVariableInfo } from 'vs/workbench/contrib/terminal/common/environmentVariable';
-import { IProcessDataEvent, IShellLaunchConfig, ITerminalDimensionsOverride, ITerminalLaunchError, TerminalShellType, TerminalSettingId } from 'vs/platform/terminal/common/terminal';
+import { IProcessDataEvent, IShellLaunchConfig, ITerminalDimensionsOverride, ITerminalLaunchError, TerminalShellType, TerminalSettingId, TitleEventSource, TerminalIcon } from 'vs/platform/terminal/common/terminal';
 import { IProductService } from 'vs/platform/product/common/productService';
 import { formatMessageForTerminal } from 'vs/workbench/contrib/terminal/common/terminalStrings';
 import { AutoOpenBarrier } from 'vs/base/common/async';
@@ -105,6 +105,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 	private _skipTerminalCommands: string[];
 	private _shellType: TerminalShellType;
 	private _title: string = '';
+	private _titleSource: TitleEventSource = TitleEventSource.Process;
 	private _container: HTMLElement | undefined;
 	private _wrapperElement: (HTMLElement & { xterm?: XTermTerminal }) | undefined;
 	private _xterm: XTermTerminal | undefined;
@@ -187,7 +188,8 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 	get isDisconnected(): boolean { return this._processManager.isDisconnected; }
 	get isRemote(): boolean { return this._processManager.remoteAuthority !== undefined; }
 	get title(): string { return this._title; }
-	get icon(): ThemeIcon | undefined { return this._getIcon(); }
+	get titleSource(): TitleEventSource { return this._titleSource; }
+	get icon(): TerminalIcon | undefined { return this._getIcon(); }
 	get color(): string | undefined { return this._getColor(); }
 
 	private readonly _onExit = new Emitter<number | undefined>();
@@ -286,6 +288,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 			// Wait for a period to allow a container to be ready
 			await this._containerReadyBarrier.wait();
 			await this._createProcess();
+
+			// Re-establish the title after reconnect
+			if (this.shellLaunchConfig.attachPersistentProcess) {
+				this.setTitle(this.shellLaunchConfig.attachPersistentProcess.title, this.shellLaunchConfig.attachPersistentProcess.titleSource);
+			}
 		});
 
 		this.addDisposable(this._configurationService.onDidChangeConfiguration(e => {
@@ -320,17 +327,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 		}));
 	}
 
-	private _getIcon(): Codicon | undefined {
-		if (this.shellLaunchConfig.icon) {
-			return iconRegistry.get(this.shellLaunchConfig.icon);
+	private _getIcon(): TerminalIcon | undefined {
+		const icon = this._shellLaunchConfig.icon || this._shellLaunchConfig.attachPersistentProcess?.icon;
+		if (!icon) {
+			return this._processManager.processState >= ProcessState.Launching ? Codicon.terminal : undefined;
 		}
-		if (this.shellLaunchConfig?.attachPersistentProcess?.icon) {
-			return iconRegistry.get(this.shellLaunchConfig.attachPersistentProcess.icon);
-		}
-		if (this._processManager.processState >= ProcessState.Launching) {
-			return Codicon.terminal;
-		}
-		return undefined;
+		return icon;
 	}
 
 	private _getColor(): string | undefined {
@@ -1628,6 +1630,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 		}
 		const didTitleChange = title !== this._title;
 		this._title = title;
+		this._titleSource = eventSource;
 		if (didTitleChange) {
 			this._setAriaLabel(this._xterm, this._instanceId, this._title);
 
@@ -1804,8 +1807,8 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 			title: nls.localize('changeTerminalIcon', "Change Icon"),
 			matchOnDescription: true
 		});
-		if (result) {
-			this.shellLaunchConfig.icon = result.description;
+		if (result && result.description) {
+			this.shellLaunchConfig.icon = iconRegistry.get(result.description);
 			this._onIconChanged.fire(this);
 		}
 	}

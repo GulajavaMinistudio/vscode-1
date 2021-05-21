@@ -26,10 +26,11 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { asWebviewUri } from 'vs/workbench/api/common/shared/webview';
 import { CellEditState, ICellOutputViewModel, ICommonCellInfo, ICommonNotebookEditor, IDisplayOutputLayoutUpdateRequest, IDisplayOutputViewModel, IGenericCellViewModel, IInsetRenderOutput, RenderOutputType } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
-import { preloadsScriptStr, RendererMetadata } from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewPreloads';
+import { PreloadOptions, preloadsScriptStr, RendererMetadata } from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewPreloads';
 import { transformWebviewThemeVars } from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewThemeMapping';
 import { MarkdownCellViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/markdownCellViewModel';
 import { INotebookKernel, INotebookRendererInfo } from 'vs/workbench/contrib/notebook/common/notebookCommon';
+import { IScopedRendererMessaging } from 'vs/workbench/contrib/notebook/common/notebookRendererMessagingService';
 import { INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
 import { IWebviewService, WebviewContentPurpose, WebviewElement } from 'vs/workbench/contrib/webview/browser/webview';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
@@ -191,7 +192,7 @@ export interface ICreationRequestMessage {
 	type: 'html';
 	content:
 	| { type: RenderOutputType.Html; htmlContent: string }
-	| { type: RenderOutputType.Extension; outputId: string; value: unknown; metadata: unknown; mimeType: string };
+	| { type: RenderOutputType.Extension; outputId: string; value: unknown; valueBytes: Uint8Array, metadata: unknown; mimeType: string };
 	cellId: string;
 	outputId: string;
 	cellTop: number;
@@ -280,6 +281,12 @@ export interface ICustomKernelMessage extends BaseToWebviewMessage {
 	message: unknown;
 }
 
+export interface ICustomRendererMessage extends BaseToWebviewMessage {
+	type: 'customRendererMessage';
+	rendererId: string;
+	message: unknown;
+}
+
 export interface ICreateMarkdownMessage {
 	type: 'createMarkdownPreview',
 	cell: IMarkdownCellInitialization;
@@ -332,6 +339,11 @@ export interface INotebookStylesMessage {
 	};
 }
 
+export interface INotebookOptionsMessage {
+	type: 'notebookOptions';
+	options: PreloadOptions;
+}
+
 export type FromWebviewMessage =
 	| WebviewIntialized
 	| IDimensionMessage
@@ -343,6 +355,7 @@ export type FromWebviewMessage =
 	| IScrollAckMessage
 	| IBlurOutputMessage
 	| ICustomKernelMessage
+	| ICustomRendererMessage
 	| IClickedDataUrlMessage
 	| IClickMarkdownPreviewMessage
 	| IContextMenuMarkdownPreviewMessage
@@ -371,6 +384,7 @@ export type ToWebviewMessage =
 	| IUpdateControllerPreloadsMessage
 	| IUpdateDecorationsMessage
 	| ICustomKernelMessage
+	| ICustomRendererMessage
 	| ICreateMarkdownMessage
 	| IDeleteMarkdownMessage
 	| IShowMarkdownMessage
@@ -378,7 +392,8 @@ export type ToWebviewMessage =
 	| IUnhideMarkdownMessage
 	| IUpdateSelectedMarkdownPreviews
 	| IInitializeMarkdownMessage
-	| INotebookStylesMessage;
+	| INotebookStylesMessage
+	| INotebookOptionsMessage;
 
 export type AnyMessage = FromWebviewMessage | ToWebviewMessage;
 
@@ -422,10 +437,10 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 	private _currentKernel?: INotebookKernel;
 
 	constructor(
-		public notebookEditor: ICommonNotebookEditor,
-		public id: string,
-		public documentUri: URI,
-		public options: {
+		public readonly notebookEditor: ICommonNotebookEditor,
+		public readonly id: string,
+		public readonly documentUri: URI,
+		private options: {
 			outputNodePadding: number,
 			outputNodeLeftPadding: number,
 			previewNodePadding: number,
@@ -433,7 +448,10 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 			leftMargin: number,
 			rightMargin: number,
 			runGutter: number,
+			dragAndDropEnabled: boolean,
+			fontSize: number
 		},
+		private readonly rendererMessaging: IScopedRendererMessaging | undefined,
 		@IWebviewService readonly webviewService: IWebviewService,
 		@IOpenerService readonly openerService: IOpenerService,
 		@INotebookService private readonly notebookService: INotebookService,
@@ -452,6 +470,17 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 
 		this.element.style.height = '1400px';
 		this.element.style.position = 'absolute';
+
+		if (rendererMessaging) {
+			this._register(rendererMessaging.onDidReceiveMessage(evt => {
+				this._sendMessageToWebview({
+					__vscode_notebook_message: true,
+					type: 'customRendererMessage',
+					rendererId: evt.rendererId,
+					message: evt.message
+				});
+			}));
+		}
 	}
 
 	updateOptions(options: {
@@ -462,15 +491,27 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 		leftMargin: number,
 		rightMargin: number,
 		runGutter: number,
+		dragAndDropEnabled: boolean,
+		fontSize: number
 	}) {
 		this.options = options;
 		this._updateStyles();
+		this._updateOptions();
 	}
 
 	private _updateStyles() {
 		this._sendMessageToWebview({
 			type: 'notebookStyles',
 			styles: this._generateStyles()
+		});
+	}
+
+	private _updateOptions() {
+		this._sendMessageToWebview({
+			type: 'notebookOptions',
+			options: {
+				dragAndDropEnabled: this.options.dragAndDropEnabled
+			}
 		});
 	}
 
@@ -484,6 +525,7 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 			'notebook-markdown-left-margin': `${this.options.markdownLeftMargin}px`,
 			'notebook-output-node-left-padding': `${this.options.outputNodeLeftPadding}px`,
 			'notebook-markdown-min-height': `${this.options.previewNodePadding * 2}px`,
+			'notebook-cell-output-font-size': `${this.options.fontSize}px`
 		};
 	}
 
@@ -631,11 +673,8 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 						width: 100%;
 					}
 
-					#container .output_container .output div {
-						overflow-x: auto;
-					}
-
 					#container > div > div > div.output {
+						font-size: var(--notebook-cell-output-font-size);
 						width: var(--notebook-output-width);
 						margin-left: var(--notebook-output-left-margin);
 						padding-top: var(--notebook-output-node-padding);
@@ -657,13 +696,15 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 						box-sizing: border-box;
 						white-space: nowrap;
 						overflow: hidden;
+						white-space: initial;
+						color: var(--vscode-foreground);
+					}
+
+					#container > div.preview.draggable {
 						user-select: none;
 						-webkit-user-select: none;
 						-ms-user-select: none;
-						white-space: initial;
 						cursor: grab;
-
-						color: var(--vscode-foreground);
 					}
 
 					#container > div.preview.emptyMarkdownCell::before {
@@ -747,7 +788,7 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 				</script>
 				${coreDependencies}
 				<div id='container' class="widgetarea" style="position: absolute;width:100%;top: 0px"></div>
-				<script type="module">${preloadsScriptStr(this.options, renderersData)}</script>
+				<script type="module">${preloadsScriptStr(this.options, { dragAndDropEnabled: this.options.dragAndDropEnabled }, renderersData)}</script>
 			</body>
 		</html>`;
 	}
@@ -760,13 +801,13 @@ export class BackLayerWebView<T extends ICommonCellInfo> extends Disposable {
 				entrypoint,
 				mimeTypes: renderer.mimeTypes,
 				extends: renderer.extends,
+				messaging: !!renderer.messaging,
 			};
 		});
 	}
 
 	private asWebviewUri(uri: URI, fromExtension: URI | undefined) {
-		const remoteAuthority = fromExtension?.scheme === Schemas.vscodeRemote ? fromExtension.authority : undefined;
-		return asWebviewUri(this.id, uri, remoteAuthority);
+		return asWebviewUri(uri, fromExtension?.scheme === Schemas.vscodeRemote ? { isRemote: true, authority: fromExtension.authority } : undefined);
 	}
 
 	postKernelMessage(message: any) {
@@ -864,6 +905,10 @@ var requirejs = (function() {
 
 			if (!link) {
 				return;
+			}
+
+			if (matchesScheme(link, Schemas.command)) {
+				console.warn('Command links are deprecated and will be removed, use messag passing instead: https://github.com/microsoft/vscode/issues/123601');
 			}
 
 			if (matchesScheme(link, Schemas.http) || matchesScheme(link, Schemas.https) || matchesScheme(link, Schemas.mailto)
@@ -988,6 +1033,11 @@ var requirejs = (function() {
 				case 'customKernelMessage':
 					{
 						this._onMessage.fire({ message: data.message });
+						break;
+					}
+				case 'customRendererMessage':
+					{
+						this.rendererMessaging?.postMessage(data.rendererId, data.message);
 						break;
 					}
 				case 'clickMarkdownPreview':
@@ -1158,7 +1208,6 @@ var requirejs = (function() {
 			purpose: WebviewContentPurpose.NotebookRenderer,
 			enableFindWidget: false,
 			transformCssVariables: transformWebviewThemeVars,
-			serviceWorkerFetchIgnoreSubdomain: true
 		}, {
 			allowMultipleAPIAcquire: true,
 			allowScripts: true,
@@ -1190,6 +1239,7 @@ var requirejs = (function() {
 		this.markdownPreviewMapping.clear();
 		this.initializeMarkdown(mdCells);
 		this._updateStyles();
+		this._updateOptions();
 	}
 
 	private shouldUpdateInset(cell: IGenericCellViewModel, output: ICellOutputViewModel, cellTop: number, outputOffset: number): boolean {
@@ -1451,6 +1501,10 @@ var requirejs = (function() {
 			const output = content.source.model;
 			renderer = content.renderer;
 			const outputDto = output.outputs.find(op => op.mime === content.mimeType);
+
+			// TODO@notebook - the message can contain "bytes" and those are transferable
+			// which improves IPC performance and therefore should be used. However, it does
+			// means that the bytes cannot be used here anymore
 			message = {
 				...messageBase,
 				outputId: output.outputId,
@@ -1460,6 +1514,7 @@ var requirejs = (function() {
 					outputId: output.outputId,
 					mimeType: content.mimeType,
 					value: outputDto?.value,
+					valueBytes: new Uint8Array(outputDto?.valueBytes ?? []),
 					metadata: outputDto?.metadata,
 				},
 			};

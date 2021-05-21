@@ -39,7 +39,6 @@ import { ContributedEditorPriority, DEFAULT_EDITOR_ASSOCIATION, IEditorOverrideS
 import { IWorkingCopyService } from 'vs/workbench/services/workingCopy/common/workingCopyService';
 import { IWorkspaceTrustRequestService, WorkspaceTrustUriResponse } from 'vs/platform/workspace/common/workspaceTrust';
 import { IHostService } from 'vs/workbench/services/host/browser/host';
-import { IFileToOpen } from 'vs/platform/windows/common/windows';
 
 type CachedEditorInput = TextResourceEditorInput | IFileEditorInput | UntitledTextEditorInput;
 type OpenInEditorGroup = IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE;
@@ -619,9 +618,11 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 
 			// Override handling: ask providers to override
 			if (resolvedOptions?.override !== EditorOverride.DISABLED) {
+
 				// TODO@lramos15 this will get cleaned up soon, but since the override
 				// service no longer uses the override flow we must check that
 				const resolvedInputWithOptionsAndGroup = await this.editorOverrideService.resolveEditorOverride(resolvedEditor, resolvedOptions, resolvedGroup);
+
 				// If we didn't override try the legacy overrides
 				if (!resolvedInputWithOptionsAndGroup || resolvedEditor.matches(resolvedInputWithOptionsAndGroup.editor)) {
 					const override = this.doOverrideOpenEditor(resolvedEditor, resolvedOptions, resolvedGroup);
@@ -792,28 +793,19 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 
 	//#endregion
 
-	//#region Workspace Trust
-	/**
-	 * Given a set of resources returns a boolean to indicate whether or not to proceed with opening
-	 */
-	private async handleWorkspaceTrust(resources: Array<URI | undefined>): Promise<boolean> {
-		const filteredResources = coalesce(resources);
-		const trustResult = await this.workspaceTrustRequestService.requestOpenUris(filteredResources);
-		if (trustResult === WorkspaceTrustUriResponse.OpenInNewWindow) {
-			const filesToOpen: IFileToOpen[] = [];
-			filteredResources.forEach(resource => filesToOpen.push({ fileUri: resource }));
-			await this.hostService.openWindow(filesToOpen, { forceNewWindow: true });
-			return false;
-		}
-		return trustResult === WorkspaceTrustUriResponse.Open;
-	}
-	//#endregion
-
 	//#region openEditors()
 
 	openEditors(editors: IEditorInputWithOptions[], group?: OpenInEditorGroup): Promise<IEditorPane[]>;
 	openEditors(editors: IResourceEditorInputType[], group?: OpenInEditorGroup): Promise<IEditorPane[]>;
 	async openEditors(editors: Array<IEditorInputWithOptions | IResourceEditorInputType>, group?: OpenInEditorGroup): Promise<IEditorPane[]> {
+
+		// Pass all editors to trust service to determine if
+		// we should proceed with opening the editors
+		const editorsTrusted = await this.handleWorkspaceTrust(editors);
+		if (!editorsTrusted) {
+			return [];
+		}
+
 		// Convert to typed editors and options
 		const typedEditors: IEditorInputWithOptions[] = editors.map(editor => {
 			if (isEditorInputWithOptions(editor)) {
@@ -825,12 +817,6 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 				options: TextEditorOptions.from(editor)
 			};
 		});
-
-		const editorResources = typedEditors.map(e => e.editor.resource);
-		if (!(await this.handleWorkspaceTrust(editorResources))) {
-			typedEditors.forEach(editor => editor.editor.dispose());
-			return [];
-		}
 
 		// Find target groups to open
 		const mapGroupToEditorsCandidates = new Map<IEditorGroup, IEditorInputWithOptions[]>();
@@ -880,6 +866,60 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 		}
 
 		return coalesce(await Promises.settled(result));
+	}
+
+	private async handleWorkspaceTrust(editors: Array<IEditorInputWithOptions | IResourceEditorInputType>): Promise<boolean> {
+		const resources = this.extractEditorResources(editors);
+
+		const trustResult = await this.workspaceTrustRequestService.requestOpenUris(resources);
+		switch (trustResult) {
+			case WorkspaceTrustUriResponse.Open:
+				return true;
+			case WorkspaceTrustUriResponse.OpenInNewWindow:
+				await this.hostService.openWindow(resources.map(resource => ({ fileUri: resource })), { forceNewWindow: true });
+				return false;
+			case WorkspaceTrustUriResponse.Cancel:
+				return false;
+		}
+	}
+
+	private extractEditorResources(editors: Array<IEditorInputWithOptions | IResourceEditorInputType>): URI[] {
+		const resources = new ResourceMap<boolean>();
+
+		for (const editor of editors) {
+
+			// Typed Editor
+			if (isEditorInputWithOptions(editor)) {
+				const resource = EditorResourceAccessor.getOriginalUri(editor.editor, { supportSideBySide: SideBySideEditor.BOTH });
+				if (URI.isUri(resource)) {
+					resources.set(resource, true);
+				} else if (resource) {
+					if (resource.primary) {
+						resources.set(resource.primary, true);
+					}
+
+					if (resource.secondary) {
+						resources.set(resource.secondary, true);
+					}
+				}
+			}
+
+			// Untyped editor
+			else {
+				const resourceDiffEditor = editor as IResourceDiffEditorInput;
+				if (URI.isUri(resourceDiffEditor.leftResource) && URI.isUri(resourceDiffEditor.rightResource)) {
+					resources.set(resourceDiffEditor.leftResource, true);
+					resources.set(resourceDiffEditor.rightResource, true);
+				}
+
+				const resourceEditor = editor as IResourceEditorInput;
+				if (URI.isUri(resourceEditor.resource)) {
+					resources.set(resourceEditor.resource, true);
+				}
+			}
+		}
+
+		return Array.from(resources.keys());
 	}
 
 	//#endregion

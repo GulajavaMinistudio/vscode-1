@@ -39,9 +39,15 @@ interface PreloadStyles {
 	readonly outputNodeLeftPadding: number;
 }
 
+export interface PreloadOptions {
+	dragAndDropEnabled: boolean;
+}
+
 declare function __import(path: string): Promise<any>;
 
-async function webviewPreloads(style: PreloadStyles, rendererData: readonly RendererMetadata[]) {
+async function webviewPreloads(style: PreloadStyles, options: PreloadOptions, rendererData: readonly RendererMetadata[]) {
+	let currentOptions = options;
+
 	const acquireVsCodeApi = globalThis.acquireVsCodeApi;
 	const vscode = acquireVsCodeApi();
 	delete (globalThis as any).acquireVsCodeApi;
@@ -124,19 +130,9 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 	interface RendererContext {
 		getState<T>(): T | undefined;
 		setState<T>(newState: T): void;
-
 		getRenderer(id: string): any | undefined;
-	}
-
-	function createRendererContext(rendererId: string): RendererContext {
-		return {
-			setState: newState => vscode.setState({ ...vscode.getState(), [rendererId]: newState }),
-			getState: <T>() => {
-				const state = vscode.getState();
-				return typeof state === 'object' && state ? state[rendererId] as T : undefined;
-			},
-			getRenderer: (id: string) => renderers.getRenderer(id),
-		};
+		postMessage?(message: unknown): void;
+		onDidReceiveMessage?: Event<unknown>;
 	}
 
 	interface ScriptModule {
@@ -152,7 +148,12 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 		const text = await loadScriptSource(url, originalUri);
 		return {
 			activate: () => {
-				return invokeSourceWithGlobals(text, kernelPreloadGlobals);
+				try {
+					return invokeSourceWithGlobals(text, { ...kernelPreloadGlobals, scriptUrl: url });
+				} catch (e) {
+					console.error(e);
+					throw e;
+				}
 			}
 		};
 	};
@@ -464,6 +465,11 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 		mime: string;
 		value: unknown;
 		metadata: unknown;
+
+		text(): string;
+		json(): any;
+		bytes(): Uint8Array
+		blob(): Blob;
 	}
 
 	interface IDestroyCellInfo {
@@ -637,6 +643,19 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 								mime: content.mimeType,
 								value: content.value,
 								metadata: content.metadata,
+								bytes() {
+									return content.valueBytes;
+								},
+								text() {
+									return new TextDecoder().decode(content.valueBytes)
+										|| String(content.value); //todo@jrieken remove this once `value` is gone!
+								},
+								json() {
+									return JSON.parse(this.text());
+								},
+								blob() {
+									return new Blob([content.valueBytes], { type: content.mimeType });
+								}
 							});
 						} catch (e) {
 							showPreloadErrors(outputNode, e);
@@ -646,6 +665,10 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 					cellOutputContainer.appendChild(outputContainer);
 					outputContainer.appendChild(outputNode);
 					resizeObserver.observe(outputNode, outputId, true);
+
+					if (content.type === RenderOutputType.Html) {
+						domEval(outputNode);
+					}
 
 					const clientHeight = outputNode.clientHeight;
 					const cps = document.defaultView!.getComputedStyle(outputNode);
@@ -773,6 +796,9 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 			case 'customKernelMessage':
 				onDidReceiveKernelMessage.fire(event.data.message);
 				break;
+			case 'customRendererMessage':
+				renderers.getRenderer(event.data.rendererId)?.receiveMessage(event.data.message);
+				break;
 			case 'notebookStyles':
 				const documentStyle = document.documentElement.style;
 
@@ -790,6 +816,16 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 					documentStyle.setProperty(`--${variable}`, event.data.styles[variable]);
 				}
 				break;
+			case 'notebookOptions':
+				currentOptions = event.data.options;
+
+				// Update markdown previews
+				for (const markdownContainer of document.querySelectorAll('.preview')) {
+					setMarkdownContainerDraggable(markdownContainer, currentOptions.dragAndDropEnabled);
+				}
+
+
+				break;
 		}
 	});
 
@@ -804,6 +840,7 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 			private readonly loadExtension: (id: string) => Promise<void>,
 		) { }
 
+		private _onMessageEvent = createEmitter();
 		private _loadPromise: Promise<RendererApi> | undefined;
 		private _api: RendererApi | undefined;
 
@@ -817,6 +854,29 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 			return this._loadPromise;
 		}
 
+		public receiveMessage(message: unknown) {
+			this._onMessageEvent.fire(message);
+		}
+
+		private createRendererContext(): RendererContext {
+			const { id, messaging } = this.data;
+			const context: RendererContext = {
+				setState: newState => vscode.setState({ ...vscode.getState(), [id]: newState }),
+				getState: <T>() => {
+					const state = vscode.getState();
+					return typeof state === 'object' && state ? state[id] as T : undefined;
+				},
+				getRenderer: (id: string) => renderers.getRenderer(id)?.api,
+			};
+
+			if (messaging) {
+				context.onDidReceiveMessage = this._onMessageEvent.event;
+				context.postMessage = message => postNotebookMessage('customRendererMessage', { rendererId: id, message });
+			}
+
+			return context;
+		}
+
 		/** Inner function cached in the _loadPromise(). */
 		private async _load() {
 			const module = await runRenderScript(this.data.entrypoint, this.data.id);
@@ -824,7 +884,7 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 				return;
 			}
 
-			const api = module.activate(createRendererContext(this.data.id));
+			const api = module.activate(this.createRendererContext());
 			this._api = api;
 
 			// Squash any errors extends errors. They won't prevent the renderer
@@ -925,8 +985,8 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 			}
 		}
 
-		public getRenderer(id: string): RendererApi | undefined {
-			return this._renderers.get(id)?.api;
+		public getRenderer(id: string) {
+			return this._renderers.get(id);
 		}
 
 		public async load(id: string) {
@@ -976,6 +1036,10 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 				mime: 'text/markdown',
 				metadata: undefined,
 				outputId: undefined,
+				text() { return content; },
+				json() { return undefined; },
+				bytes() { return new Uint8Array(); },
+				blob() { return new Blob(); },
 			});
 		}
 	}();
@@ -984,6 +1048,16 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 		__vscode_notebook_message: true,
 		type: 'initialized'
 	});
+
+	function setMarkdownContainerDraggable(element: Element, isDraggable: boolean) {
+		if (isDraggable) {
+			element.classList.add('draggable');
+			element.setAttribute('draggable', 'true');
+		} else {
+			element.classList.remove('draggable');
+			element.removeAttribute('draggable');
+		}
+	}
 
 	async function createMarkdownPreview(cellId: string, content: string, top: number): Promise<HTMLElement> {
 		const container = document.getElementById('container')!;
@@ -1032,7 +1106,7 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 			postNotebookMessage<IMouseLeaveMarkdownPreviewMessage>('mouseLeaveMarkdownPreview', { cellId });
 		});
 
-		cellContainer.setAttribute('draggable', 'true');
+		setMarkdownContainerDraggable(cellContainer, currentOptions.dragAndDropEnabled);
 
 		cellContainer.addEventListener('dragstart', e => {
 			markdownPreviewDragManager.startDrag(e, cellId);
@@ -1164,6 +1238,10 @@ async function webviewPreloads(style: PreloadStyles, rendererData: readonly Rend
 				return;
 			}
 
+			if (!currentOptions.dragAndDropEnabled) {
+				return;
+			}
+
 			this.currentDrag = { cellId, clientY: e.clientY };
 
 			(e.target as HTMLElement).classList.add('dragging');
@@ -1211,15 +1289,17 @@ export interface RendererMetadata {
 	readonly entrypoint: string;
 	readonly mimeTypes: readonly string[];
 	readonly extends: string | undefined;
+	readonly messaging: boolean;
 }
 
-export function preloadsScriptStr(styleValues: PreloadStyles, renderers: readonly RendererMetadata[]) {
+export function preloadsScriptStr(styleValues: PreloadStyles, options: PreloadOptions, renderers: readonly RendererMetadata[]) {
 	// TS will try compiling `import()` in webviePreloads, so use an helper function instead
 	// of using `import(...)` directly
 	return `
 		const __import = (x) => import(x);
 		(${webviewPreloads})(
 				JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(styleValues))}")),
+				JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(options))}")),
 				JSON.parse(decodeURIComponent("${encodeURIComponent(JSON.stringify(renderers))}"))
 			)\n//# sourceURL=notebookWebviewPreloads.js\n`;
 }
