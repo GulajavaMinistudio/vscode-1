@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { coalesceInPlace, equals } from 'vs/base/common/arrays';
+import { asArray, coalesceInPlace, equals } from 'vs/base/common/arrays';
 import { illegalArgument } from 'vs/base/common/errors';
 import { IRelativePattern } from 'vs/base/common/glob';
 import { isMarkdownString, MarkdownString as BaseMarkdownString } from 'vs/base/common/htmlContent';
 import { ReadonlyMapView, ResourceMap } from 'vs/base/common/map';
 import { normalizeMimeType } from 'vs/base/common/mime';
-import { isStringArray } from 'vs/base/common/types';
+import { isArray, isStringArray } from 'vs/base/common/types';
 import { URI } from 'vs/base/common/uri';
 import { generateUuid } from 'vs/base/common/uuid';
 import { FileSystemProviderErrorCode, markAsFileSystemProviderError } from 'vs/platform/files/common/files';
@@ -3075,11 +3075,11 @@ export class NotebookCellData {
 	kind: NotebookCellKind;
 	value: string;
 	languageId: string;
-	outputs?: NotebookCellOutput[];
+	outputs?: vscode.NotebookCellOutput[];
 	metadata?: NotebookCellMetadata;
 	executionSummary?: vscode.NotebookCellExecutionSummary;
 
-	constructor(kind: NotebookCellKind, value: string, languageId: string, outputs?: NotebookCellOutput[], metadata?: NotebookCellMetadata, executionSummary?: vscode.NotebookCellExecutionSummary) {
+	constructor(kind: NotebookCellKind, value: string, languageId: string, outputs?: vscode.NotebookCellOutput[], metadata?: NotebookCellMetadata, executionSummary?: vscode.NotebookCellExecutionSummary) {
 		this.kind = kind;
 		this.value = value;
 		this.languageId = languageId;
@@ -3112,7 +3112,8 @@ export class NotebookCellOutputItem {
 		if (!obj) {
 			return false;
 		}
-		return typeof (<vscode.NotebookCellOutputItem>obj).mime === 'string';
+		return typeof (<vscode.NotebookCellOutputItem>obj).mime === 'string'
+			&& (<vscode.NotebookCellOutputItem>obj).data instanceof Uint8Array;
 	}
 
 	static error(err: Error | { name: string, message?: string, stack?: string }, metadata?: { [key: string]: any }): NotebookCellOutputItem {
@@ -3148,18 +3149,11 @@ export class NotebookCellOutputItem {
 		return NotebookCellOutputItem.text(rawStr, mime, metadata);
 	}
 
-	/** @deprecated */
-	public value: Uint8Array | unknown; // JSON'able
-
 	constructor(
 		public data: Uint8Array,
 		public mime: string,
 		public metadata?: { [key: string]: any }
 	) {
-		if (!(data instanceof Uint8Array)) {
-			this.value = data;
-		}
-
 		const mimeNormalized = normalizeMimeType(mime, true);
 		if (!mimeNormalized) {
 			throw new Error('INVALID mime type, must not be empty or falsy: ' + mime);
@@ -3169,6 +3163,16 @@ export class NotebookCellOutputItem {
 }
 
 export class NotebookCellOutput {
+
+	static isNotebookCellOutput(candidate: any): candidate is vscode.NotebookCellOutput {
+		if (candidate instanceof NotebookCellOutput) {
+			return true;
+		}
+		if (!candidate || typeof candidate !== 'object') {
+			return false;
+		}
+		return typeof (<NotebookCellOutput>candidate).id === 'string' && isArray((<NotebookCellOutput>candidate).items);
+	}
 
 	static ensureUniqueMimeTypes(items: NotebookCellOutputItem[], warn: boolean = false): NotebookCellOutputItem[] {
 		const seen = new Set<string>();
@@ -3193,15 +3197,18 @@ export class NotebookCellOutput {
 	}
 
 	id: string;
-	outputs: NotebookCellOutputItem[];
+	items: NotebookCellOutputItem[];
 	metadata?: Record<string, any>;
 
+	get outputs() { return this.items; }
+	set outputs(value) { this.items = value; }
+
 	constructor(
-		outputs: NotebookCellOutputItem[],
+		items: NotebookCellOutputItem[],
 		idOrMetadata?: string | Record<string, any>,
 		metadata?: Record<string, any>
 	) {
-		this.outputs = NotebookCellOutput.ensureUniqueMimeTypes(outputs, true);
+		this.items = NotebookCellOutput.ensureUniqueMimeTypes(items, true);
 		if (typeof idOrMetadata === 'string') {
 			this.id = idOrMetadata;
 			this.metadata = metadata;
@@ -3251,14 +3258,15 @@ export enum NotebookControllerAffinity {
 	Preferred = 2
 }
 
-export class NotebookKernelPreload {
-	public readonly provides: string[];
+export class NotebookRendererScript {
+
+	public provides: string[];
 
 	constructor(
-		public readonly uri: vscode.Uri,
+		public uri: vscode.Uri,
 		provides: string | string[] = []
 	) {
-		this.provides = typeof provides === 'string' ? [provides] : provides;
+		this.provides = asArray(provides);
 	}
 }
 
