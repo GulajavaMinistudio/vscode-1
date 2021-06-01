@@ -744,6 +744,7 @@ export interface INotebookEditorModel extends IEditorModel {
 	isDirty(): boolean;
 	isReadonly(): boolean;
 	isOrphaned(): boolean;
+	hasAssociatedFilePath(): boolean;
 	load(options?: INotebookLoadOptions): Promise<IResolvedNotebookEditorModel>;
 	save(options?: ISaveOptions): Promise<boolean>;
 	saveAs(target: URI): Promise<IEditorInput | undefined>;
@@ -905,7 +906,7 @@ export interface INotebookCellStatusBarItemList {
 }
 
 export const DisplayOrderKey = 'notebook.displayOrder';
-export const CellToolbarLocKey = 'notebook.cellToolbarLocation';
+export const CellToolbarLocation = 'notebook.cellToolbarLocation';
 export const CellToolbarVisibility = 'notebook.cellToolbarVisibility';
 export const ShowCellStatusBarKey = 'notebook.showCellStatusBar';
 export const ShowCellStatusBarAfterExecuteKey = 'notebook.showCellStatusBarAfterExecute';
@@ -922,6 +923,7 @@ export const ShowFoldingControls = 'notebook.showFoldingControls';
 export const DragAndDropEnabled = 'notebook.dragAndDropEnabled';
 export const NotebookCellEditorOptionsCustomizations = 'notebook.editorOptionsCustomizations';
 export const ConsolidatedRunButton = 'notebook.consolidatedRunButton';
+export const OpenGettingStarted = 'notebook.experimental.openGettingStarted';
 
 export const enum CellStatusbarAlignment {
 	Left = 1,
