@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import 'vs/workbench/contrib/welcome/gettingStarted/common/media/example_markdown_media';
+import 'vs/workbench/contrib/welcome/gettingStarted/common/media/notebookProfile';
 import { localize } from 'vs/nls';
 import { Codicon } from 'vs/base/common/codicons';
 import { ThemeIcon } from 'vs/platform/theme/common/themeService';
@@ -261,16 +262,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 							hc: 'hc/openFolder.png',
 						}
 					}
-				},
-				{
-					id: 'notebookProfile',
-					title: localize('gettingStarted.notebookProfile.title', "Customize the look of your notebooks"),
-					description: localize('gettingStarted.notebookProfile.description', "Get notebooks to feel just the way you prefer"),
-					when: 'userHasOpenedNotebook',
-					media: {
-						type: 'markdown', path: 'notebookProfile'
-					}
-				},
+				}
 			]
 		}
 	},
@@ -454,6 +446,27 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 						},
 					}
 				}
+			]
+		}
+	},
+	{
+		id: 'notebooks',
+		title: localize('gettingStarted.notebook.title', "Customize Notebooks"),
+		description: '',
+		icon: setupIcon,
+		when: 'userHasOpenedNotebook',
+		content: {
+			type: 'steps',
+			steps: [
+				{
+					id: 'notebookProfile',
+					title: localize('gettingStarted.notebookProfile.title', "Select the layout for your notebooks"),
+					description: localize('gettingStarted.notebookProfile.description', "Get notebooks to feel just the way you prefer"),
+					when: 'userHasOpenedNotebook',
+					media: {
+						type: 'markdown', path: 'notebookProfile'
+					}
+				},
 			]
 		}
 	}

@@ -1,101 +1,14 @@
-# Query: todo@API
-# Flags: WordMatch OpenEditors
+# Query: //todo@API
 # Including: */vscode.d.ts
 # ContextLines: 1
 
-29 results - 1 file
+2 results - 1 file
 
 src/vs/vscode.d.ts:
-  11374  		/** @deprecated	*/
-  11375: 		// todo@API remove
-  11376  		readonly viewType: string;
+  11804  	 */
+  11805: 	//todo@API inline?
+  11806  	export interface NotebookExecuteHandler {
 
-  11440  
-  11441: 	// todo@API jsdoc
-  11442  	export class NotebookCellMetadata {
-
-  11446  		 */
-  11447: 		// todo@API decouple from metadata? extract as dedicated field or inside an options object and leave metadata purely for extensions?
-  11448  		readonly inputCollapsed?: boolean;
-
-  11452  		 */
-  11453: 		// todo@API decouple from metadata? extract as dedicated field or inside an options object and leave metadata purely for extensions?
-  11454  		readonly outputCollapsed?: boolean;
-
-  11496  		 */
-  11497: 		// todo@API use duration instead of start/end?
-  11498  		readonly startTime?: number;
-
-  11505  
-  11506: 	// todo@API jsdoc
-  11507: 	// todo@API remove this and use simple {}?
-  11508  	export class NotebookDocumentMetadata {
-
-  11644  
-  11645: 		//todo@API remove in favour of NotebookCellOutput#metadata
-  11646  		metadata?: { [key: string]: any };
-
-  11662  	 */
-  11663: 	//todo@API - add sugar function to add more outputs
-  11664  	export class NotebookCellOutput {
-
-  11689  		 */
-  11690: 		//todo@API have this OR NotebookCellOutputItem#metadata but not both? Preference for this.
-  11691  		metadata?: { [key: string]: any };
-
-  11753  		 * @param languageId The language identifier of the source value.
-  11754: 		 * @param outputs //TODO@API remove from ctor?
-  11755: 		 * @param metadata //TODO@API remove from ctor?
-  11756: 		 * @param executionSummary //TODO@API remove from ctor?
-  11757  		 */
-
-  11840  		*/
-  11841: 		// todo@API ...NotebookDocument... or just ...Notebook... just like...Cell... above
-  11842  		transientDocumentMetadata?: { [K in keyof NotebookDocumentMetadata]?: boolean };
-
-  11847  	 */
-  11848: 	//todo@API inline?
-  11849  	export interface NotebookExecuteHandler {
-
-  11895  
-  11896: 		// todo@api remove
-  11897  		/** @deprecated */
-
-  11942  
-  11943: 		// todo@API remove
-  11944  		/** @deprecated */
-
-  12003  
-  12004: 	// todo@api jsdoc
-  12005: 	// todo@api Inline unless we can come up with more (future) properties
-  12006  	export interface NotebookCellExecuteStartContext {
-
-  12013  
-  12014: 	// todo@api jsdoc
-  12015: 	// todo@api Inline unless we can come up with more (future) properties
-  12016  	export interface NotebookCellExecuteEndContext {
-
-  12058  
-  12059: 		// todo@API inline context object?
-  12060  		start(context?: NotebookCellExecuteStartContext): void;
-  12061  
-  12062: 		// todo@API inline context object?
-  12063  		end(result?: NotebookCellExecuteEndContext): void;
-
-  12145  		 */
-  12146: 		//todo@API only have Command?
-  12147  		command?: string | Command;
-
-  12166  		 */
-  12167: 		// todo@API jsdoc for args
-  12168: 		// todo@API should ctors only have the args for required properties?
-  12169  		constructor(text: string, alignment: NotebookCellStatusBarAlignment, command?: string | Command, tooltip?: string, priority?: number, accessibilityInformation?: AccessibilityInformation);
-
-  12185  		 */
-  12186: 		//todo@API jsdoc for return-type
-  12187: 		//todo@API should this return an item instead of an array?
-  12188  		provideCellStatusBarItems(cell: NotebookCell, token: CancellationToken): ProviderResult<NotebookCellStatusBarItem[]>;
-
-  12199  	 */
-  12200: 	// todo@api what should be in this namespace? should notebookDocuments and friends be in the workspace namespace?
-  12201  	export namespace notebooks {
+  11935  		 */
+  11936: 		//todo@api selected vs associated, jsdoc
+  11937  		readonly onDidChangeNotebookAssociation: Event<{ notebook: NotebookDocument, selected: boolean }>;
