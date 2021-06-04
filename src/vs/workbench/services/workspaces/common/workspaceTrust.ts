@@ -10,7 +10,6 @@ import { splitName } from 'vs/base/common/labels';
 import { Disposable, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { LinkedList } from 'vs/base/common/linkedList';
 import { Schemas } from 'vs/base/common/network';
-import { isWeb } from 'vs/base/common/platform';
 import Severity from 'vs/base/common/severity';
 import { URI } from 'vs/base/common/uri';
 import { localize } from 'vs/nls';
@@ -19,6 +18,7 @@ import { IContextKey, IContextKeyService, RawContextKey } from 'vs/platform/cont
 import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { IRemoteAuthorityResolverService, ResolverResult } from 'vs/platform/remote/common/remoteAuthorityResolver';
+import { isVirtualResource } from 'vs/platform/remote/common/remoteHosts';
 import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
 import { IWorkspace, IWorkspaceContextService, IWorkspaceFolder, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { WorkspaceTrustRequestOptions, IWorkspaceTrustManagementService, IWorkspaceTrustInfo, IWorkspaceTrustUriInfo, IWorkspaceTrustRequestService, IWorkspaceTrustTransitionParticipant, WorkspaceTrustUriResponse } from 'vs/platform/workspace/common/workspaceTrust';
@@ -35,17 +35,9 @@ export const WORKSPACE_TRUST_EXTENSION_SUPPORT = 'extensions.supportUntrustedWor
 export const WORKSPACE_TRUST_STORAGE_KEY = 'content.trust.model.key';
 
 export const WorkspaceTrustContext = {
-	IsTrusted: new RawContextKey<boolean>('isWorkspaceTrusted', false, localize('workspaceTrustCtx', "Whether the current workspace has been trusted by the user."))
+	IsEnabled: new RawContextKey<boolean>('isWorkspaceTrustEnabled', false, localize('workspaceTrustEnabledCtx', "Whether the workspace trust feature is enabled.")),
+	IsTrusted: new RawContextKey<boolean>('isWorkspaceTrusted', false, localize('workspaceTrustedCtx', "Whether the current workspace has been trusted by the user."))
 };
-
-export function isWorkspaceTrustEnabled(configurationService: IConfigurationService): boolean {
-	if (isWeb) {
-		return false;
-	}
-
-	return (configurationService.inspect<boolean>(WORKSPACE_TRUST_ENABLED).userValue ?? configurationService.inspect<boolean>(WORKSPACE_TRUST_ENABLED).defaultValue) ?? false;
-}
-
 
 export class CanonicalWorkspace implements IWorkspace {
 	constructor(
@@ -74,8 +66,6 @@ export class CanonicalWorkspace implements IWorkspace {
 		return this.originalWorkspace.id;
 	}
 }
-
-
 
 export class WorkspaceTrustManagementService extends Disposable implements IWorkspaceTrustManagementService {
 
@@ -171,8 +161,18 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 	}
 
 	private async getCanonicalUri(uri: URI): Promise<URI> {
-		return this.environmentService.remoteAuthority && uri.scheme === Schemas.vscodeRemote ?
-			await this.remoteAuthorityResolverService.getCanonicalURI(uri) : uri;
+		if (this.environmentService.remoteAuthority && uri.scheme === Schemas.vscodeRemote) {
+			return this.remoteAuthorityResolverService.getCanonicalURI(uri);
+		}
+
+		if (uri.scheme === 'vscode-vfs') {
+			const index = uri.authority.indexOf('+');
+			if (index !== -1) {
+				return uri.with({ authority: uri.authority.substr(0, index) });
+			}
+		}
+
+		return uri;
 	}
 
 	private async resolveCanonicalWorkspaceUris(): Promise<void> {
@@ -231,7 +231,7 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 	}
 
 	private calculateWorkspaceTrust(): boolean {
-		if (!isWorkspaceTrustEnabled(this.configurationService)) {
+		if (!this.workspaceTrustEnabled) {
 			return true;
 		}
 
@@ -258,7 +258,7 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 	}
 
 	private async updateWorkspaceTrust(trusted?: boolean): Promise<void> {
-		if (!isWorkspaceTrustEnabled(this.configurationService)) {
+		if (!this.workspaceTrustEnabled) {
 			return;
 		}
 
@@ -295,7 +295,11 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 
 	private doGetUriTrustInfo(uri: URI): IWorkspaceTrustUriInfo {
 		// Return trusted when workspace trust is disabled
-		if (!isWorkspaceTrustEnabled(this.configurationService)) {
+		if (!this.workspaceTrustEnabled) {
+			return { trusted: true, uri };
+		}
+
+		if (this.isTrustedVirtualResource(uri)) {
 			return { trusted: true, uri };
 		}
 
@@ -323,6 +327,10 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 
 		for (const uri of uris) {
 			if (trusted) {
+				if (this.isTrustedVirtualResource(uri)) {
+					continue;
+				}
+
 				const foundItem = this._trustStateInfo.uriTrustInfo.find(trustInfo => this.uriIdentityService.extUri.isEqual(trustInfo.uri, uri));
 				if (!foundItem) {
 					this._trustStateInfo.uriTrustInfo.push({ uri, trusted: true });
@@ -342,12 +350,24 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 		}
 	}
 
+	private isTrustedVirtualResource(uri: URI): boolean {
+		return isVirtualResource(uri) && uri.scheme !== 'vscode-vfs';
+	}
+
 	//#endregion
 
 	//#region public interface
 
 	get workspaceResolved(): Promise<void> {
 		return this._workspaceResolvedPromise;
+	}
+
+	get workspaceTrustEnabled(): boolean {
+		if (this.environmentService.disableWorkspaceTrust) {
+			return false;
+		}
+
+		return this.configurationService.getValue<boolean>(WORKSPACE_TRUST_ENABLED) ?? false;
 	}
 
 	get workspaceTrustInitialized(): Promise<void> {
@@ -364,6 +384,21 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 
 	isWorkpaceTrusted(): boolean {
 		return this._trustState.isTrusted ?? false;
+	}
+
+	isWorkspaceTrustForced(): boolean {
+		// Remote - remote authority explicitly sets workspace trust
+		if (this.environmentService.remoteAuthority && this._remoteAuthority && this._remoteAuthority.options?.isTrusted !== undefined) {
+			return true;
+		}
+
+		// All workspace uris are trusted automatically
+		const workspaceUris = this.getWorkspaceUris().filter(uri => !this.isTrustedVirtualResource(uri));
+		if (workspaceUris.length === 0) {
+			return true;
+		}
+
+		return false;
 	}
 
 	canSetParentFolderTrust(): boolean {
@@ -389,6 +424,12 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 		// Empty workspace
 		if (this.workspaceService.getWorkbenchState() === WorkbenchState.EMPTY) {
 			return true;
+		}
+
+		// All workspace uris are trusted automatically
+		const workspaceUris = this.getWorkspaceUris().filter(uri => !this.isTrustedVirtualResource(uri));
+		if (workspaceUris.length === 0) {
+			return false;
 		}
 
 		// Untrusted workspace
@@ -434,7 +475,7 @@ export class WorkspaceTrustManagementService extends Disposable implements IWork
 
 	async getUriTrustInfo(uri: URI): Promise<IWorkspaceTrustUriInfo> {
 		// Return trusted when workspace trust is disabled
-		if (!isWorkspaceTrustEnabled(this.configurationService)) {
+		if (!this.workspaceTrustEnabled) {
 			return { trusted: true, uri };
 		}
 
@@ -488,6 +529,7 @@ export class WorkspaceTrustRequestService extends Disposable implements IWorkspa
 	private _trusted!: boolean;
 	private _modalTrustRequestPromise?: Promise<boolean | undefined>;
 	private _modalTrustRequestResolver?: (trusted: boolean | undefined) => void;
+	private readonly _ctxWorkspaceTrustEnabled: IContextKey<boolean>;
 	private readonly _ctxWorkspaceTrustState: IContextKey<boolean>;
 
 	private readonly _onDidInitiateWorkspaceTrustRequest = this._register(new Emitter<WorkspaceTrustRequestOptions | undefined>());
@@ -505,7 +547,9 @@ export class WorkspaceTrustRequestService extends Disposable implements IWorkspa
 
 		this._register(this.workspaceTrustManagementService.onDidChangeTrust(trusted => this.trusted = trusted));
 
+		this._ctxWorkspaceTrustEnabled = WorkspaceTrustContext.IsEnabled.bindTo(contextKeyService);
 		this._ctxWorkspaceTrustState = WorkspaceTrustContext.IsTrusted.bindTo(contextKeyService);
+		this._ctxWorkspaceTrustEnabled.set(this.workspaceTrustManagementService.workspaceTrustEnabled);
 
 		this.trusted = this.workspaceTrustManagementService.isWorkpaceTrusted();
 	}

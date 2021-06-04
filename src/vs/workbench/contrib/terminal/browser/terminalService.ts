@@ -380,7 +380,8 @@ export class TerminalService implements ITerminalService {
 		if (!offProcService) {
 			return this._availableProfiles || [];
 		}
-		return offProcService?.getProfiles(includeDetectedProfiles);
+		const platform = await this._getPlatformKey();
+		return offProcService?.getProfiles(this._configurationService.getValue(`${TerminalSettingPrefix.Profiles}${platform}`), this._configurationService.getValue(`${TerminalSettingPrefix.DefaultProfile}${platform}`), includeDetectedProfiles);
 	}
 
 	private _onBeforeShutdown(reason: ShutdownReason): boolean | Promise<boolean> {
@@ -1047,6 +1048,7 @@ export class TerminalService implements ITerminalService {
 		}
 		await profileProvider.createContributedTerminalProfile(isSplitTerminal);
 		this.setActiveInstanceByIndex(this._terminalInstances.length - 1);
+		await this.getActiveInstance()?.focusWhenReady();
 	}
 
 	private _createProfileQuickPickItem(profile: ITerminalProfile): IProfileQuickPickItem {
