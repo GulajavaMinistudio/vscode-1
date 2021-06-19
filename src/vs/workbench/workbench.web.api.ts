@@ -30,6 +30,11 @@ interface IStaticExtension {
 	isBuiltin?: boolean;
 }
 
+/**
+ * The id of an extension. It is always ${publisher}.${name}. For example: vscode.csharp.
+ */
+type ExtensionId = string;
+
 interface ICommonTelemetryPropertiesResolver {
 	(): { [key: string]: any };
 }
@@ -72,6 +77,8 @@ interface ITunnelOptions {
 	label?: string;
 
 	public?: boolean;
+
+	protocol?: string;
 }
 
 export interface TunnelCreationOptions {
@@ -92,6 +99,11 @@ interface ITunnel {
 	localAddress: string;
 
 	public?: boolean;
+
+	/**
+	 * If protocol is not provided, it is assumed to be http, regardless of the localAddress
+	 */
+	protocol?: string;
 
 	/**
 	 * Implementers of Tunnel should fire onDidDispose when dispose is called.
@@ -324,9 +336,11 @@ interface IWorkbenchConstructionOptions {
 
 	/**
 	 * Additional builtin extensions that cannot be uninstalled but only be disabled.
-	 * It can be an Id of an extension published in the Marketplace or location of the extension where it is hosted.
+	 * It can be one of the following:
+	 * 	- `ExtensionId`: id of the extension that is available in Marketplace
+	 * 	- `UriComponents`: location of the extension where it is hosted.
 	 */
-	readonly additionalBuiltinExtensions?: readonly (string | UriComponents)[];
+	readonly additionalBuiltinExtensions?: readonly (ExtensionId | UriComponents)[];
 
 	/**
 	 * Filter for built-in extensions.
