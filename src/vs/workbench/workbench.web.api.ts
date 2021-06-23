@@ -31,7 +31,8 @@ interface IStaticExtension {
 }
 
 /**
- * The id of an extension. It is always ${publisher}.${name}. For example: vscode.csharp.
+ * The identifier of an extension in the format: `PUBLISHER.NAME`.
+ * For example: `vscode.csharp`
  */
 type ExtensionId = string;
 
@@ -330,7 +331,7 @@ interface IWorkbenchConstructionOptions {
 
 	/**
 	 * Add static extensions that cannot be uninstalled but only be disabled.
-	 * @deprecated
+	 * @deprecated. Use `additionalBuiltinExtensions` instead.
 	 */
 	readonly staticExtensions?: readonly IStaticExtension[];
 
@@ -341,11 +342,6 @@ interface IWorkbenchConstructionOptions {
 	 * 	- `UriComponents`: location of the extension where it is hosted.
 	 */
 	readonly additionalBuiltinExtensions?: readonly (ExtensionId | UriComponents)[];
-
-	/**
-	 * Filter for built-in extensions.
-	 */
-	readonly builtinExtensionsFilter?: (extensionId: string) => boolean;
 
 	/**
 	 * [TEMPORARY]: This will be removed soon.
