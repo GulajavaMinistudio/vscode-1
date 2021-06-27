@@ -24,6 +24,7 @@ export type BuiltinGettingStartedStep = {
 	when?: string,
 	media:
 	| { type: 'image', path: string | { hc: string, light: string, dark: string }, altText: string }
+	| { type: 'svg', path: string, altText: string }
 	| { type: 'markdown', path: string },
 };
 
@@ -31,6 +32,7 @@ export type BuiltinGettingStartedCategory = {
 	id: string
 	title: string,
 	description: string,
+	isFeatured: boolean,
 	next?: string,
 	icon: ThemeIcon,
 	when?: string,
@@ -53,13 +55,23 @@ type GettingStartedStartEntryContent = BuiltinGettingStartedStartEntry[];
 
 export const startEntries: GettingStartedStartEntryContent = [
 	{
-		id: 'welcome.showNewEntries',
-		title: localize('gettingStarted.newFile.title', "New..."),
-		description: localize('gettingStarted.newFile.description', "Start with something new!"),
+		id: 'welcome.showNewFileEntries',
+		title: localize('gettingStarted.newFile.title', "New File..."),
+		description: localize('gettingStarted.newFile.description', "Open a new untitled file, notebook, or custom editor."),
 		icon: Codicon.newFile,
 		content: {
 			type: 'startEntry',
-			command: 'welcome.showNewEntries',
+			command: 'welcome.showNewFileEntries',
+		}
+	},
+	{
+		id: 'welcome.showNewFolderEntries',
+		title: localize('gettingStarted.newFolder.title', "New Folder..."),
+		description: localize('gettingStarted.newFolder.description', "Create a folder from a Git repo or an extension contributed template folder"),
+		icon: Codicon.newFolder,
+		content: {
+			type: 'startEntry',
+			command: 'welcome.showNewFolderEntries',
 		}
 	},
 	{
@@ -95,17 +107,6 @@ export const startEntries: GettingStartedStartEntryContent = [
 			command: 'workbench.action.files.openFolder',
 		}
 	},
-	// {
-	// 	id: 'topLevelCloneRepo',
-	// 	title: localize('gettingStarted.cloneRepo.title', "Clone Git Repository..."),
-	// 	description: localize('gettingStarted.cloneRepo.description', "Clone a git repository"),
-	// 	icon: Codicon.repoClone,
-	// 	when: '!git.missing',
-	// 	content: {
-	// 		type: 'startEntry',
-	// 		command: 'git.clone',
-	// 	}
-	// },
 	{
 		id: 'topLevelCommandPalette',
 		title: localize('gettingStarted.topLevelCommandPalette.title', "Run a Command..."),
@@ -125,6 +126,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 		id: 'Setup',
 		title: localize('gettingStarted.setup.title', "Get Started with VS Code"),
 		description: localize('gettingStarted.setup.description', "Discover the best customizations to make VS Code yours."),
+		isFeatured: true,
 		icon: setupIcon,
 		next: 'Beginner',
 		content: {
@@ -224,6 +226,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 		id: 'Beginner',
 		title: localize('gettingStarted.beginner.title', "Learn the Fundamentals"),
 		icon: beginnerIcon,
+		isFeatured: true,
 		next: 'Intermediate',
 		description: localize('gettingStarted.beginner.description', "Jump right into VS Code and get an overview of the must-have features."),
 		content: {
@@ -304,6 +307,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 
 	{
 		id: 'Intermediate',
+		isFeatured: false,
 		title: localize('gettingStarted.intermediate.title', "Boost your Productivity"),
 		icon: intermediateIcon,
 		description: localize('gettingStarted.intermediate.description', "Optimize your development workflow with these tips & tricks."),
@@ -407,6 +411,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 		title: localize('gettingStarted.notebook.title', "Customize Notebooks"),
 		description: '',
 		icon: setupIcon,
+		isFeatured: false,
 		when: 'config.notebook.experimental.gettingStarted && userHasOpenedNotebook',
 		content: {
 			type: 'steps',

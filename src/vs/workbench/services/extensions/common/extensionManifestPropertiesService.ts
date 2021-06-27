@@ -123,7 +123,7 @@ export class ExtensionManifestPropertiesService extends Disposable implements IE
 		result = manifest.extensionKind;
 		if (typeof result !== 'undefined') {
 			result = this.toArray(result);
-			// Add web kind if the extension can run as web extension
+			// Override extension declared extensionKind by adding web kind if the extension can run as web extension
 			if (deducedExtensionKind.includes('web') && !result.includes('web')) {
 				result.push('web');
 			}
@@ -217,9 +217,9 @@ export class ExtensionManifestPropertiesService extends Disposable implements IE
 
 		let result: ExtensionKind[] = ['ui', 'workspace', 'web'];
 
-		// Not an UI extension if extension has dependencies or an extension pack
-		if (isNonEmptyArray(manifest.extensionDependencies) || isNonEmptyArray(manifest.extensionPack)) {
-			result = ['workspace', 'web'];
+		// Extension pack defaults to workspace extensionKind
+		if (isNonEmptyArray(manifest.extensionPack) || isNonEmptyArray(manifest.extensionDependencies)) {
+			result = ['workspace'];
 		}
 
 		if (manifest.contributes) {
@@ -244,7 +244,18 @@ export class ExtensionManifestPropertiesService extends Disposable implements IE
 			ExtensionsRegistry.getExtensionPoints().forEach(e => extensionPointExtensionKindsMap.set(e.name, e.defaultExtensionKind || [] /* supports all */));
 			this._extensionPointExtensionKindsMap = extensionPointExtensionKindsMap;
 		}
-		return this._extensionPointExtensionKindsMap.get(extensionPoint) || ['workspace'] /* Unknown extension point => workspace */;
+
+		let extensionPointExtensionKind = this._extensionPointExtensionKindsMap.get(extensionPoint);
+		if (extensionPointExtensionKind) {
+			return extensionPointExtensionKind;
+		}
+
+		extensionPointExtensionKind = this.productService.extensionPointExtensionKind ? this.productService.extensionPointExtensionKind[extensionPoint] : undefined;
+		if (extensionPointExtensionKind) {
+			return extensionPointExtensionKind;
+		}
+
+		return ['workspace', 'web'] /* Unknown extension point => workspace, web */;
 	}
 
 	private getProductExtensionKind(manifest: IExtensionManifest): ExtensionKind[] | undefined {

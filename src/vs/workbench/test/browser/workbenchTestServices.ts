@@ -5,12 +5,12 @@
 
 import { FileEditorInput } from 'vs/workbench/contrib/files/browser/editors/fileEditorInput';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
-import { basename } from 'vs/base/common/resources';
+import { basename, isEqual } from 'vs/base/common/resources';
 import { URI } from 'vs/base/common/uri';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { NullTelemetryService } from 'vs/platform/telemetry/common/telemetryUtils';
 import { EditorInput } from 'vs/workbench/common/editor/editorInput';
-import { IEditorInputWithOptions, IEditorIdentifier, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, IEditorInput, IEditorPane, IEditorCloseEvent, IEditorPartOptions, IRevertOptions, GroupIdentifier, EditorsOrder, IFileEditorInput, IEditorInputFactoryRegistry, IEditorInputSerializer, EditorExtensions, ISaveOptions, IMoveResult, ITextEditorPane, ITextDiffEditorPane, IVisibleEditorPane, IEditorOpenContext, IEditorMoveEvent, EditorExtensions as Extensions, EditorInputCapabilities, IEditorOpenEvent, IUntypedEditorInput } from 'vs/workbench/common/editor';
+import { IEditorInputWithOptions, IEditorIdentifier, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, IEditorInput, IEditorPane, IEditorCloseEvent, IEditorPartOptions, IRevertOptions, GroupIdentifier, EditorsOrder, IFileEditorInput, IEditorInputFactoryRegistry, IEditorInputSerializer, EditorExtensions, ISaveOptions, IMoveResult, ITextEditorPane, ITextDiffEditorPane, IVisibleEditorPane, IEditorOpenContext, IEditorMoveEvent, EditorExtensions as Extensions, EditorInputCapabilities, IEditorOpenEvent, IUntypedEditorInput, UntypedEditorContext } from 'vs/workbench/common/editor';
 import { EditorServiceImpl, IEditorGroupView, IEditorGroupsAccessor, IEditorGroupTitleHeight } from 'vs/workbench/browser/parts/editor/editor';
 import { Event, Emitter } from 'vs/base/common/event';
 import { IResolvedWorkingCopyBackup, IWorkingCopyBackupService } from 'vs/workbench/services/workingCopy/common/workingCopyBackup';
@@ -18,7 +18,7 @@ import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configur
 import { IWorkbenchLayoutService, Parts, Position as PartPosition } from 'vs/workbench/services/layout/browser/layoutService';
 import { TextModelResolverService } from 'vs/workbench/services/textmodelResolver/common/textModelResolverService';
 import { ITextModelService } from 'vs/editor/common/services/resolverService';
-import { IEditorOptions, IResourceEditorInput, IEditorModel, IResourceEditorInputIdentifier } from 'vs/platform/editor/common/editor';
+import { IEditorOptions, IResourceEditorInput, IEditorModel, IResourceEditorInputIdentifier, ITextResourceEditorInput } from 'vs/platform/editor/common/editor';
 import { IUntitledTextEditorService, UntitledTextEditorService } from 'vs/workbench/services/untitled/common/untitledTextEditorService';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { ILifecycleService, BeforeShutdownEvent, ShutdownReason, StartupKind, LifecyclePhase, WillShutdownEvent } from 'vs/workbench/services/lifecycle/common/lifecycle';
@@ -126,9 +126,9 @@ import { SideBySideEditor } from 'vs/workbench/browser/parts/editor/sideBySideEd
 import { IEnterWorkspaceResult, IRecent, IRecentlyOpened, IWorkspaceFolderCreationData, IWorkspaceIdentifier, IWorkspacesService } from 'vs/platform/workspaces/common/workspaces';
 import { IWorkspaceTrustManagementService, IWorkspaceTrustRequestService } from 'vs/platform/workspace/common/workspaceTrust';
 import { TestWorkspaceTrustManagementService, TestWorkspaceTrustRequestService } from 'vs/workbench/services/workspaces/test/common/testWorkspaceTrustService';
-import { ILocalTerminalService, IShellLaunchConfig, ITerminalChildProcess, ITerminalProfile, ITerminalsLayoutInfo, ITerminalsLayoutInfoById, TerminalShellType } from 'vs/platform/terminal/common/terminal';
+import { ICreateTerminalOptions, ILocalTerminalService, IShellLaunchConfig, ITerminalChildProcess, ITerminalProfile, ITerminalsLayoutInfo, ITerminalsLayoutInfoById, TerminalLocation, TerminalShellType } from 'vs/platform/terminal/common/terminal';
 import { IProcessDetails, ISetTerminalLayoutInfoArgs } from 'vs/platform/terminal/common/terminalProcess';
-import { ITerminalInstanceService } from 'vs/workbench/contrib/terminal/browser/terminal';
+import { ITerminalInstance, ITerminalInstanceService } from 'vs/workbench/contrib/terminal/browser/terminal';
 import { isArray } from 'vs/base/common/types';
 import { IShellLaunchConfigResolveOptions, ITerminalProfileResolverService } from 'vs/workbench/contrib/terminal/common/terminal';
 import { EditorOverrideService } from 'vs/workbench/services/editor/browser/editorOverrideService';
@@ -820,6 +820,7 @@ export class TestEditorService implements EditorServiceImpl {
 	}
 	openEditors(_editors: any, _group?: any): Promise<IEditorPane[]> { throw new Error('not implemented'); }
 	isOpened(_editor: IResourceEditorInputIdentifier): boolean { return false; }
+	isVisible(_editor: IEditorInput): boolean { return false; }
 	replaceEditors(_editors: any, _group: any) { return Promise.resolve(undefined); }
 	createEditorInput(_input: IResourceEditorInput | IUntitledTextResourceEditorInput | IResourceDiffEditorInput): EditorInput { throw new Error('not implemented'); }
 	save(editors: IEditorIdentifier[], options?: ISaveEditorsOptions): Promise<boolean> { throw new Error('Method not implemented.'); }
@@ -1300,6 +1301,10 @@ export class TestEditorInput extends EditorInput {
 		return this._typeId;
 	}
 
+	override get editorId(): string {
+		return this._typeId;
+	}
+
 	override resolve(): Promise<IEditorModel | null> {
 		return Promise.resolve(null);
 	}
@@ -1437,6 +1442,7 @@ export class TestFileEditorInput extends EditorInput implements IFileEditorInput
 	}
 
 	override get typeId() { return this._typeId; }
+	override get editorId() { return this._typeId; }
 
 	private _capabilities: EditorInputCapabilities = EditorInputCapabilities.None;
 	override get capabilities(): EditorInputCapabilities { return this._capabilities; }
@@ -1448,7 +1454,15 @@ export class TestFileEditorInput extends EditorInput implements IFileEditorInput
 	}
 
 	override resolve(): Promise<IEditorModel | null> { return !this.fails ? Promise.resolve(null) : Promise.reject(new Error('fails')); }
-	override matches(other: EditorInput): boolean { return !!(other?.resource && this.resource.toString() === other.resource.toString() && other instanceof TestFileEditorInput && other.typeId === this.typeId); }
+	override matches(other: EditorInput | IResourceEditorInput | ITextResourceEditorInput | IUntitledTextResourceEditorInput): boolean {
+		if (super.matches(other)) {
+			return true;
+		}
+		if (other instanceof EditorInput) {
+			return !!(other?.resource && this.resource.toString() === other.resource.toString() && other instanceof TestFileEditorInput && other.typeId === this.typeId);
+		}
+		return isEqual(this.resource, other.resource) && this.editorId === other.options?.override;
+	}
 	setPreferredResource(resource: URI): void { }
 	async setEncoding(encoding: string) { }
 	getEncoding() { return undefined; }
@@ -1476,6 +1490,9 @@ export class TestFileEditorInput extends EditorInput implements IFileEditorInput
 		this.gotSaved = false;
 		this.gotSavedAs = false;
 		this.dirty = false;
+	}
+	override toUntyped(group: GroupIdentifier | undefined, context: UntypedEditorContext): IUntypedEditorInput | undefined {
+		return { resource: this.resource };
 	}
 	setDirty(): void { this.dirty = true; }
 	override isDirty(): boolean {
@@ -1585,6 +1602,7 @@ export class TestWorkspacesService implements IWorkspacesService {
 }
 
 export class TestTerminalInstanceService implements ITerminalInstanceService {
+	onDidCreateInstance = Event.None;
 	declare readonly _serviceBrand: undefined;
 
 	async getXtermConstructor(): Promise<any> { throw new Error('Method not implemented.'); }
@@ -1592,6 +1610,7 @@ export class TestTerminalInstanceService implements ITerminalInstanceService {
 	async getXtermUnicode11Constructor(): Promise<any> { throw new Error('Method not implemented.'); }
 	async getXtermWebglConstructor(): Promise<any> { throw new Error('Method not implemented.'); }
 	preparePathForTerminalAsync(path: string, executable: string | undefined, title: string, shellType: TerminalShellType, isRemote: boolean): Promise<string> { throw new Error('Method not implemented.'); }
+	createInstance(options: ICreateTerminalOptions, target?: TerminalLocation): ITerminalInstance { throw new Error('Method not implemented.'); }
 }
 
 export class TestTerminalProfileResolverService implements ITerminalProfileResolverService {
