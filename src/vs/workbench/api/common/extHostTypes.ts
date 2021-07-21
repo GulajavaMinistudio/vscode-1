@@ -1280,6 +1280,24 @@ export class CallHierarchyOutgoingCall {
 	}
 }
 
+export enum LanguageStatusSeverity {
+	Information = 0,
+	Warning = 1,
+	Error = 2
+}
+
+export class LanguageStatus {
+
+	text: string;
+	detail: string | MarkdownString;
+	severity: LanguageStatusSeverity;
+
+	constructor(text: string) {
+		this.text = text;
+		this.detail = '';
+		this.severity = LanguageStatusSeverity.Information;
+	}
+}
 @es5ClassCompat
 export class CodeLens {
 
@@ -3286,7 +3304,6 @@ export class PortAttributes {
 
 //#region Testing
 export enum TestResultState {
-	Unset = 0,
 	Queued = 1,
 	Running = 2,
 	Passed = 3,
@@ -3302,7 +3319,7 @@ export enum TestMessageSeverity {
 	Hint = 3
 }
 
-export enum TestRunProfileGroup {
+export enum TestRunProfileKind {
 	Run = 1,
 	Debug = 2,
 	Coverage = 3,
@@ -3319,7 +3336,6 @@ export class TestRunRequest implements vscode.TestRunRequest {
 
 @es5ClassCompat
 export class TestMessage implements vscode.TestMessage {
-	public severity = TestMessageSeverity.Error;
 	public expectedOutput?: string;
 	public actualOutput?: string;
 

@@ -356,6 +356,7 @@ export interface INotebookEditorCreationOptions {
 		cellTopInsertToolbar: MenuId;
 		cellExecuteToolbar: MenuId;
 	};
+	readonly options?: NotebookOptions;
 }
 
 export interface IActiveNotebookEditor extends INotebookEditor {
@@ -695,6 +696,7 @@ export interface INotebookCellList {
 	getFocusedElements(): ICellViewModel[];
 	getSelectedElements(): ICellViewModel[];
 	revealElementsInView(range: ICellRange): void;
+	scrollToBottom(): void;
 	revealElementInView(element: ICellViewModel): void;
 	revealElementInViewAtTop(element: ICellViewModel): void;
 	revealElementInCenterIfOutsideViewport(element: ICellViewModel): void;
