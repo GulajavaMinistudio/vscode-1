@@ -174,7 +174,7 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 	const extHostWebviewViews = rpcProtocol.set(ExtHostContext.ExtHostWebviewViews, new ExtHostWebviewViews(rpcProtocol, extHostWebviews));
 	const extHostTesting = rpcProtocol.set(ExtHostContext.ExtHostTesting, new ExtHostTesting(rpcProtocol, extHostCommands));
 	const extHostUriOpeners = rpcProtocol.set(ExtHostContext.ExtHostUriOpeners, new ExtHostUriOpeners(rpcProtocol));
-	rpcProtocol.set(ExtHostContext.ExtHostInteractive, new ExtHostInteractive(rpcProtocol, extHostNotebook, extHostDocumentsAndEditors));
+	rpcProtocol.set(ExtHostContext.ExtHostInteractive, new ExtHostInteractive(rpcProtocol, extHostNotebook, extHostDocumentsAndEditors, extHostCommands));
 
 	// Check that no named customers are missing
 	const expected: ProxyIdentifier<any>[] = values(ExtHostContext);
@@ -346,7 +346,6 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 
 		const tests: typeof vscode.tests = {
 			createTestController(provider, label) {
-				checkProposedApiEnabled(extension);
 				return extHostTesting.createTestController(provider, label);
 			},
 			createTestObserver() {
@@ -507,9 +506,9 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 				checkProposedApiEnabled(extension);
 				return extHostLanguageFeatures.registerTypeHierarchyProvider(extension, selector, provider);
 			},
-			registerLanguageStatusProvider(selector: vscode.DocumentSelector, provider: vscode.LanguageStatusProvider): vscode.Disposable {
+			createLanguageStatusItem(selector: vscode.DocumentSelector): vscode.LanguageStatusItem {
 				checkProposedApiEnabled(extension);
-				return extHostLanguageFeatures.registerLanguageStatusProvider(extension, selector, provider);
+				return extHostLanguages.createLanguageStatusItem(selector);
 			}
 		};
 
@@ -1284,7 +1283,6 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 			BranchCoverage: extHostTypes.BranchCoverage,
 			FunctionCoverage: extHostTypes.FunctionCoverage,
 			WorkspaceTrustState: extHostTypes.WorkspaceTrustState,
-			LanguageStatus: extHostTypes.LanguageStatus,
 			LanguageStatusSeverity: extHostTypes.LanguageStatusSeverity,
 		};
 	};
