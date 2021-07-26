@@ -13817,7 +13817,7 @@ declare module 'vscode' {
 
 	/**
 	 * Namespace for testing functionality. Tests are published by registering
-	 * {@link TestController} instances, then adding {@link TestItem}s.
+	 * {@link TestController} instances, then adding {@link TestItem TestItems}.
 	 * Controllers may also describe how to run tests by creating one or more
 	 * {@link TestRunProfile} instances.
 	 */
@@ -13902,7 +13902,7 @@ declare module 'vscode' {
 	/**
 	 * Entry point to discover and execute tests. It contains {@link items} which
 	 * are used to populate the editor UI, and is associated with
-	 * {@link createRunProfile | run profiles} to allow
+	 * {@link createRunProfile run profiles} to allow
 	 * for tests to be executed.
 	 */
 	export interface TestController {
@@ -13964,7 +13964,7 @@ declare module 'vscode' {
 		resolveHandler?: (item: TestItem | undefined) => Thenable<void> | void;
 
 		/**
-		 * Creates a {@link TestRun<T>}. This should be called by the
+		 * Creates a {@link TestRun}. This should be called by the
 		 * {@link TestRunProfile} when a request is made to execute tests, and may
 		 * also be called if a test run is detected externally. Once created, tests
 		 * that are included in the request will be moved into the queued state.
@@ -14006,7 +14006,14 @@ declare module 'vscode' {
 	}
 
 	/**
-	 * Options given to {@link tests.runTests}.
+	 * A TestRunRequest is a precursor to a {@link TestRun}, which in turn is
+	 * created by passing a request to {@link tests.runTests}. The TestRunRequest
+	 * contains information about which tests should be run, which should not be
+	 * run, and how they are run (via the {@link profile}).
+	 *
+	 * In general, TestRunRequests are created by the editor and pass to
+	 * {@link TestRunProfile.runHandler}, however you can also create test
+	 * requests and runs outside of the `runHandler`.
 	 */
 	export class TestRunRequest {
 		/**
@@ -14018,7 +14025,7 @@ declare module 'vscode' {
 		 * The process of running tests should resolve the children of any test
 		 * items who have not yet been resolved.
 		 */
-		include?: TestItem[];
+		readonly include?: TestItem[];
 
 		/**
 		 * An array of tests the user has marked as excluded from the test included
@@ -14027,14 +14034,14 @@ declare module 'vscode' {
 		 * May be omitted if no exclusions were requested. Test controllers should
 		 * not run excluded tests or any children of excluded tests.
 		 */
-		exclude?: TestItem[];
+		readonly exclude?: TestItem[];
 
 		/**
 		 * The profile used for this request. This will always be defined
 		 * for requests issued from the editor UI, though extensions may
 		 * programmatically create requests not associated with any profile.
 		 */
-		profile?: TestRunProfile;
+		readonly profile?: TestRunProfile;
 
 		/**
 		 * @param tests Array of specific tests to run, or undefined to run all tests
@@ -14086,7 +14093,7 @@ declare module 'vscode' {
 
 		/**
 		 * Indicates a test has failed. You should pass one or more
-		 * {@link TestMessage | TestMessages} to describe the failure.
+		 * {@link TestMessage TestMessages} to describe the failure.
 		 * @param test Test item to update.
 		 * @param messages Messages associated with the test failure.
 		 * @param duration How long the test took to execute, in milliseconds.
@@ -14095,7 +14102,7 @@ declare module 'vscode' {
 
 		/**
 		 * Indicates a test has errored. You should pass one or more
-		 * {@link TestMessage | TestMessages} to describe the failure. This differs
+		 * {@link TestMessage TestMessages} to describe the failure. This differs
 		 * from the "failed" state in that it indicates a test that couldn't be
 		 * executed at all, from a compilation error for example.
 		 * @param test Test item to update.
