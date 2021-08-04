@@ -36,7 +36,6 @@ import { filterExceptionsFromTelemetry } from 'vs/workbench/contrib/debug/common
 import { DebugCompoundRoot } from 'vs/workbench/contrib/debug/common/debugCompoundRoot';
 import { IUriIdentityService } from 'vs/workbench/services/uriIdentity/common/uriIdentity';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 
 export class DebugSession implements IDebugSession {
 
@@ -86,7 +85,6 @@ export class DebugSession implements IDebugSession {
 		@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@ICustomEndpointTelemetryService private readonly customEndpointTelemetryService: ICustomEndpointTelemetryService,
-		@IContextKeyService contextKeyService: IContextKeyService
 	) {
 		this._options = options || {};
 		if (this.hasSeparateRepl()) {
@@ -302,7 +300,9 @@ export class DebugSession implements IDebugSession {
 		}
 
 		this.cancelAllRequests();
-		if (this.raw) {
+		if (this._options.lifecycleManagedByParent && this.parentSession) {
+			await this.parentSession.terminate(restart);
+		} else if (this.raw) {
 			if (this.raw.capabilities.supportsTerminateRequest && this._configuration.resolved.request === 'launch') {
 				await this.raw.terminate(restart);
 			} else {
@@ -325,7 +325,9 @@ export class DebugSession implements IDebugSession {
 		}
 
 		this.cancelAllRequests();
-		if (this.raw) {
+		if (this._options.lifecycleManagedByParent && this.parentSession) {
+			await this.parentSession.disconnect(restart);
+		} else if (this.raw) {
 			await this.raw.disconnect({ restart, terminateDebuggee: false });
 		}
 
@@ -343,7 +345,11 @@ export class DebugSession implements IDebugSession {
 		}
 
 		this.cancelAllRequests();
-		await this.raw.restart({ arguments: this.configuration });
+		if (this._options.lifecycleManagedByParent && this.parentSession) {
+			await this.parentSession.restart();
+		} else {
+			await this.raw.restart({ arguments: this.configuration });
+		}
 	}
 
 	async sendBreakpoints(modelUri: URI, breakpointsToSend: IBreakpoint[], sourceModified: boolean): Promise<void> {

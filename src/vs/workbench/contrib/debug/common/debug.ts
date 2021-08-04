@@ -538,6 +538,7 @@ export interface IDebugConfiguration {
 		closeOnEnd: boolean;
 		collapseIdenticalLines: boolean;
 		historySuggestions: boolean;
+		acceptSuggestionOnEnter: 'off' | 'on';
 	};
 	focusWindowOnBreak: boolean;
 	onTaskErrors: 'debugAnyway' | 'showErrors' | 'prompt' | 'abort';
@@ -984,6 +985,10 @@ export interface IDebugService {
 	 */
 	getViewModel(): IViewModel;
 
+	/**
+	 * Resumes execution and pauses until the given position is reached.
+	 */
+	runTo(uri: uri, lineNumber: number, column?: number): Promise<void>;
 }
 
 // Editor interfaces
