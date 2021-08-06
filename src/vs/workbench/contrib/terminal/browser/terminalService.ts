@@ -171,6 +171,7 @@ export class TerminalService implements ITerminalService {
 		@IEditorResolverService editorResolverService: IEditorResolverService,
 		@IExtensionService private readonly _extensionService: IExtensionService,
 		@INotificationService private readonly _notificationService: INotificationService,
+		@IThemeService private readonly _themeService: IThemeService,
 		@optional(ILocalTerminalService) localTerminalService: ILocalTerminalService
 	) {
 		this._localTerminalService = localTerminalService;
@@ -199,13 +200,14 @@ export class TerminalService implements ITerminalService {
 					}
 				}
 				const resolvedResource = this._terminalEditorService.resolveResource(instance || resource);
-				const editor = this._terminalEditorService.getInputFromResource(resolvedResource) || { editor: URI.revive(resolvedResource) };
+				const editor = this._terminalEditorService.getInputFromResource(resolvedResource) || { editor: resolvedResource };
 				return {
 					editor,
 					options: {
 						...options,
 						pinned: true,
-						forceReload: true
+						forceReload: true,
+						override: TerminalEditor.ID
 					}
 				};
 			});
@@ -890,7 +892,19 @@ export class TerminalService implements ITerminalService {
 
 		quickPickItems.push({ type: 'separator', label: nls.localize('ICreateContributedTerminalProfileOptions', "contributed") });
 		for (const contributed of this._terminalContributionService.terminalProfiles) {
-			const icon = contributed.icon ? (iconRegistry.get(contributed.icon) || Codicon.terminal) : Codicon.terminal;
+			if (typeof contributed.icon === 'string' && contributed.icon.startsWith('$(')) {
+				contributed.icon = contributed.icon.substring(2, contributed.icon.length - 1);
+			}
+			const icon = contributed.icon && typeof contributed.icon === 'string' ? (iconRegistry.get(contributed.icon) || Codicon.terminal) : Codicon.terminal;
+			const uriClasses = getUriClasses(contributed, this._themeService.getColorTheme().type, true);
+			const colorClass = getColorClass(contributed);
+			const iconClasses = [];
+			if (uriClasses) {
+				iconClasses.push(...uriClasses);
+			}
+			if (colorClass) {
+				iconClasses.push(colorClass);
+			}
 			quickPickItems.push({
 				label: `$(${icon.id}) ${contributed.title}`,
 				profile: {
@@ -899,7 +913,8 @@ export class TerminalService implements ITerminalService {
 					icon: contributed.icon,
 					id: contributed.id,
 					color: contributed.color
-				}
+				},
+				iconClasses
 			});
 		}
 
@@ -919,7 +934,8 @@ export class TerminalService implements ITerminalService {
 			if ('id' in value.profile) {
 				await this._createContributedTerminalProfile(value.profile.extensionIdentifier, value.profile.id, {
 					isSplitTerminal: !!(keyMods?.alt && activeInstance),
-					icon: value.profile.icon
+					icon: value.profile.icon,
+					color: value.profile.color
 				});
 				return;
 			} else {
@@ -1092,7 +1108,7 @@ export class TerminalService implements ITerminalService {
 
 
 	async createTerminal(options?: ICreateTerminalOptions): Promise<ITerminalInstance> {
-		const config = options?.config;
+		const config = options?.config || this._availableProfiles?.find(p => p.profileName === this._defaultProfileName);
 		const shellLaunchConfig = config && 'extensionIdentifier' in config ? {} : this._convertProfileToShellLaunchConfig(config || {});
 
 		// Get the contributed profile if it was provided
@@ -1108,7 +1124,8 @@ export class TerminalService implements ITerminalService {
 			await this._createContributedTerminalProfile(contributedProfile.extensionIdentifier, contributedProfile.id, {
 				isSplitTerminal: options?.forceSplit || !!options?.instanceToSplit,
 				icon: contributedProfile.icon,
-				target: options?.target
+				target: options?.target,
+				color: contributedProfile.color
 			});
 			const instanceHost = options?.target === TerminalLocation.Editor ? this._terminalEditorService : this._terminalGroupService;
 			const instance = instanceHost.instances[instanceHost.instances.length - 1];
