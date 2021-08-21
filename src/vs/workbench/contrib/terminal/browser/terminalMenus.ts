@@ -9,7 +9,7 @@ import { Schemas } from 'vs/base/common/network';
 import { localize } from 'vs/nls';
 import { MenuRegistry, MenuId, IMenuActionOptions, MenuItemAction, IMenu } from 'vs/platform/actions/common/actions';
 import { ICommandService } from 'vs/platform/commands/common/commands';
-import { ContextKeyAndExpr, ContextKeyEqualsExpr, ContextKeyExpr, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
+import { ContextKeyExpr, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IExtensionTerminalProfile, ITerminalProfile, TerminalLocation, TerminalSettingId } from 'vs/platform/terminal/common/terminal';
 import { ResourceContextKey } from 'vs/workbench/common/resources';
@@ -17,7 +17,7 @@ import { ICreateTerminalOptions, ITerminalLocationOptions, ITerminalService } fr
 import { TerminalCommandId, TERMINAL_VIEW_ID } from 'vs/workbench/contrib/terminal/common/terminal';
 import { TerminalContextKeys, TerminalContextKeyStrings } from 'vs/workbench/contrib/terminal/common/terminalContextKey';
 import { terminalStrings } from 'vs/workbench/contrib/terminal/common/terminalStrings';
-import { SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
+import { ACTIVE_GROUP, SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
 
 const enum ContextMenuGroup {
 	Create = '1_create',
@@ -244,10 +244,10 @@ export function setupTerminalMenus(): void {
 					},
 					group: 'navigation',
 					order: 0,
-					when: ContextKeyAndExpr.create([
-						ContextKeyEqualsExpr.create('view', TERMINAL_VIEW_ID),
+					when: ContextKeyExpr.and(
+						ContextKeyExpr.equals('view', TERMINAL_VIEW_ID),
 						ContextKeyExpr.not(`config.${TerminalSettingId.TabsEnabled}`)
-					]),
+					),
 				}
 			},
 			{
@@ -260,8 +260,8 @@ export function setupTerminalMenus(): void {
 					},
 					group: 'navigation',
 					order: 0,
-					when: ContextKeyAndExpr.create([
-						ContextKeyEqualsExpr.create('view', TERMINAL_VIEW_ID),
+					when: ContextKeyExpr.and(
+						ContextKeyExpr.equals('view', TERMINAL_VIEW_ID),
 						ContextKeyExpr.has(`config.${TerminalSettingId.TabsEnabled}`),
 						ContextKeyExpr.or(
 							ContextKeyExpr.and(
@@ -281,7 +281,7 @@ export function setupTerminalMenus(): void {
 							),
 							ContextKeyExpr.equals(`config.${TerminalSettingId.TabsShowActiveTerminal}`, 'always')
 						)
-					]),
+					),
 				}
 			},
 			{
@@ -294,8 +294,8 @@ export function setupTerminalMenus(): void {
 					},
 					group: 'navigation',
 					order: 2,
-					when: ContextKeyAndExpr.create([
-						ContextKeyEqualsExpr.create('view', TERMINAL_VIEW_ID),
+					when: ContextKeyExpr.and(
+						ContextKeyExpr.equals('view', TERMINAL_VIEW_ID),
 						ContextKeyExpr.or(
 							ContextKeyExpr.not(`config.${TerminalSettingId.TabsEnabled}`),
 							ContextKeyExpr.and(
@@ -315,7 +315,7 @@ export function setupTerminalMenus(): void {
 							),
 							ContextKeyExpr.equals(`config.${TerminalSettingId.TabsShowActions}`, 'always')
 						)
-					])
+					)
 				}
 			},
 			{
@@ -328,8 +328,8 @@ export function setupTerminalMenus(): void {
 					},
 					group: 'navigation',
 					order: 3,
-					when: ContextKeyAndExpr.create([
-						ContextKeyEqualsExpr.create('view', TERMINAL_VIEW_ID),
+					when: ContextKeyExpr.and(
+						ContextKeyExpr.equals('view', TERMINAL_VIEW_ID),
 						ContextKeyExpr.or(
 							ContextKeyExpr.not(`config.${TerminalSettingId.TabsEnabled}`),
 							ContextKeyExpr.and(
@@ -349,7 +349,7 @@ export function setupTerminalMenus(): void {
 							),
 							ContextKeyExpr.equals(`config.${TerminalSettingId.TabsShowActions}`, 'always')
 						)
-					])
+					)
 				}
 			},
 			{
@@ -361,9 +361,9 @@ export function setupTerminalMenus(): void {
 					},
 					group: 'navigation',
 					order: 0,
-					when: ContextKeyAndExpr.create([
-						ContextKeyEqualsExpr.create('view', TERMINAL_VIEW_ID)
-					])
+					when: ContextKeyExpr.and(
+						ContextKeyExpr.equals('view', TERMINAL_VIEW_ID)
+					)
 				}
 			}
 		]
@@ -591,12 +591,20 @@ export function getTerminalActionBarArgs(location: ITerminalLocationOptions, pro
 			} as ICreateTerminalOptions,
 			shouldForwardArgs: true
 		};
+		const splitLocation = (location === TerminalLocation.Editor || location === { viewColumn: ACTIVE_GROUP }) ? { viewColumn: SIDE_GROUP } : { splitActiveTerminal: true };
+		const splitOptions: IMenuActionOptions = {
+			arg: {
+				config: p,
+				splitLocation
+			} as ICreateTerminalOptions,
+			shouldForwardArgs: true
+		};
 		if (isDefault) {
 			dropdownActions.unshift(new MenuItemAction({ id: TerminalCommandId.NewWithProfile, title: localize('defaultTerminalProfile', "{0} (Default)", p.profileName), category: TerminalTabContextMenuGroup.Profile }, undefined, options, contextKeyService, commandService));
-			submenuActions.unshift(new MenuItemAction({ id: TerminalCommandId.Split, title: localize('defaultTerminalProfile', "{0} (Default)", p.profileName), category: TerminalTabContextMenuGroup.Profile }, undefined, options, contextKeyService, commandService));
+			submenuActions.unshift(new MenuItemAction({ id: TerminalCommandId.Split, title: localize('defaultTerminalProfile', "{0} (Default)", p.profileName), category: TerminalTabContextMenuGroup.Profile }, undefined, splitOptions, contextKeyService, commandService));
 		} else {
 			dropdownActions.push(new MenuItemAction({ id: TerminalCommandId.NewWithProfile, title: p.profileName.replace(/[\n\r\t]/g, ''), category: TerminalTabContextMenuGroup.Profile }, undefined, options, contextKeyService, commandService));
-			submenuActions.push(new MenuItemAction({ id: TerminalCommandId.Split, title: p.profileName.replace(/[\n\r\t]/g, ''), category: TerminalTabContextMenuGroup.Profile }, undefined, options, contextKeyService, commandService));
+			submenuActions.push(new MenuItemAction({ id: TerminalCommandId.Split, title: p.profileName.replace(/[\n\r\t]/g, ''), category: TerminalTabContextMenuGroup.Profile }, undefined, splitOptions, contextKeyService, commandService));
 		}
 	}
 
@@ -611,7 +619,7 @@ export function getTerminalActionBarArgs(location: ITerminalLocationOptions, pro
 			},
 			location
 		})));
-		const splitLocation = (location === TerminalLocation.Editor || typeof location === 'object' && 'viewColumn' in location) ? { viewColumn: SIDE_GROUP } : location;
+		const splitLocation = location === TerminalLocation.Editor ? { viewColumn: SIDE_GROUP } : { splitActiveTerminal: true };
 		submenuActions.push(new Action(TerminalCommandId.NewWithProfile, title, undefined, true, () => terminalService.createTerminal({
 			config: {
 				extensionIdentifier: contributed.extensionIdentifier,
@@ -620,6 +628,12 @@ export function getTerminalActionBarArgs(location: ITerminalLocationOptions, pro
 			},
 			location: splitLocation
 		})));
+	}
+
+	const defaultProfileAction = dropdownActions.find(d => d.label.endsWith('(Default)'));
+	if (defaultProfileAction) {
+		dropdownActions = dropdownActions.filter(d => d !== defaultProfileAction).sort((a, b) => a.label.localeCompare(b.label));
+		dropdownActions.unshift(defaultProfileAction);
 	}
 
 	if (dropdownActions.length > 0) {
@@ -636,15 +650,9 @@ export function getTerminalActionBarArgs(location: ITerminalLocationOptions, pro
 		}
 	}
 
-	const defaultProfileAction = dropdownActions.find(d => d.label.endsWith('(Default)'));
-	if (defaultProfileAction) {
-		dropdownActions = dropdownActions.filter(d => d !== defaultProfileAction);
-		dropdownActions.unshift(defaultProfileAction);
-	}
-
 	const defaultSubmenuProfileAction = submenuActions.find(d => d.label.endsWith('(Default)'));
 	if (defaultSubmenuProfileAction) {
-		submenuActions = submenuActions.filter(d => d !== defaultSubmenuProfileAction);
+		submenuActions = submenuActions.filter(d => d !== defaultSubmenuProfileAction).sort((a, b) => a.label.localeCompare(b.label));
 		submenuActions.unshift(defaultSubmenuProfileAction);
 	}
 
