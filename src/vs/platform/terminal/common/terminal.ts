@@ -394,13 +394,12 @@ export interface IShellLaunchConfig {
 export interface ICreateContributedTerminalProfileOptions {
 	icon?: URI | string | { light: URI, dark: URI };
 	color?: string;
-	splitActiveTerminal?: boolean;
-	location?: TerminalLocation | { viewColumn: number, preserveState?: boolean };
+	location?: TerminalLocation | { viewColumn: number, preserveState?: boolean } | { splitActiveTerminal: boolean };
 }
 
 export enum TerminalLocation {
-	Panel = 0,
-	Editor = 1
+	Panel = 1,
+	Editor = 2
 }
 
 export const enum TerminalLocationString {

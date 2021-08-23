@@ -52,7 +52,10 @@ export interface ITerminalInternalOptions {
 	isFeatureTerminal?: boolean;
 	useShellEnvironment?: boolean;
 	resolvedExtHostIdentifier?: ExtHostTerminalIdentifier;
-	splitActiveTerminal?: boolean;
+	/**
+	 * This location is different from the API location because it can include splitActiveTerminal,
+	 * a property we resolve internally
+	 */
 	location?: TerminalLocation | { viewColumn: number, preserveState?: boolean } | { splitActiveTerminal: boolean };
 }
 
@@ -171,7 +174,7 @@ export class ExtHostTerminal {
 		return this._id;
 	}
 
-	private _serializeParentTerminal(location?: TerminalLocation | vscode.TerminalEditorLocationOptions | vscode.TerminalSplitLocationOptions | { splitActiveTerminal: boolean }, parentTerminal?: ExtHostTerminalIdentifier, internalLocation?: TerminalLocation | { viewColumn: number, preserveState?: boolean } | { splitActiveTerminal: boolean }): TerminalLocation | vscode.TerminalEditorLocationOptions | { parentTerminal: ExtHostTerminalIdentifier } | { splitActiveTerminal: boolean, location?: TerminalLocation } | vscode.TerminalEditorLocationOptions | undefined {
+	private _serializeParentTerminal(location?: TerminalLocation | vscode.TerminalEditorLocationOptions | vscode.TerminalSplitLocationOptions | { splitActiveTerminal: boolean }, parentTerminal?: ExtHostTerminalIdentifier, internalLocation?: TerminalLocation | { viewColumn: number, preserveState?: boolean } | { splitActiveTerminal: boolean }): TerminalLocation | vscode.TerminalEditorLocationOptions | { parentTerminal: ExtHostTerminalIdentifier } | { splitActiveTerminal: boolean } | vscode.TerminalEditorLocationOptions | undefined {
 		if (typeof location === 'object' && 'parentTerminal' in location) {
 			return parentTerminal ? { parentTerminal } : undefined;
 		} else if (internalLocation) {

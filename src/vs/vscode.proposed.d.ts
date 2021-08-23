@@ -926,8 +926,8 @@ declare module 'vscode' {
 	}
 
 	export enum TerminalLocation {
-		Panel = 0,
-		Editor = 1,
+		Panel = 1,
+		Editor = 2,
 	}
 
 	export interface TerminalEditorLocationOptions {
@@ -2415,6 +2415,18 @@ declare module 'vscode' {
 		 * How the completion was triggered.
 		 */
 		readonly triggerKind: InlineCompletionTriggerKind;
+
+		/**
+		 * Provides information about the currently selected item in the suggest widget.
+		 * If set, provided inline completions must extend the text of the selected item
+		 * and use the same range, otherwise they are not shown as preview.
+		*/
+		readonly selectedSuggestionInfo: SelectedSuggestionInfo | undefined;
+	}
+
+	export interface SelectedSuggestionInfo {
+		range: Range;
+		text: string;
 	}
 
 	/**
@@ -2873,17 +2885,6 @@ declare module 'vscode' {
 
 	namespace languages {
 		export function createLanguageStatusItem(selector: DocumentSelector): LanguageStatusItem;
-	}
-
-	//#endregion
-
-	//#region https://github.com/microsoft/vscode/issues/129053
-
-	export namespace env {
-		/**
-		 * The environment in which the app is embedded in. i.e. 'desktop', 'codespaces', 'web'.
-		 */
-		export const embedderIdentifier: string;
 	}
 
 	//#endregion
