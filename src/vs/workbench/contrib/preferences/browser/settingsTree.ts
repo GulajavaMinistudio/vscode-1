@@ -1349,7 +1349,7 @@ export class SettingExcludeRenderer extends AbstractSettingRenderer implements I
 			const newValue = { ...template.context.scopeValue };
 
 			// first delete the existing entry, if present
-			if (e.originalItem.value.data) {
+			if (e.originalItem.value) {
 				if (e.originalItem.value.data.toString() in template.context.defaultValue) {
 					// delete a default by overriding it
 					newValue[e.originalItem.value.data.toString()] = false;
@@ -1559,12 +1559,10 @@ export class SettingEnumRenderer extends AbstractSettingRenderer implements ITre
 		const disposables = new DisposableStore();
 		template.toDispose.add(disposables);
 
-		const defaultOrEmptyString = dataElement.defaultValue ?? '';
-
 		let createdDefault = false;
-		if (!settingEnum.includes(defaultOrEmptyString)) {
+		if (!settingEnum.includes(dataElement.defaultValue)) {
 			// Add a new potentially blank default setting
-			settingEnum.unshift(defaultOrEmptyString);
+			settingEnum.unshift(dataElement.defaultValue);
 			enumDescriptions.unshift('');
 			enumItemLabels.unshift('');
 			createdDefault = true;
@@ -1594,7 +1592,7 @@ export class SettingEnumRenderer extends AbstractSettingRenderer implements ITre
 
 		let idx = settingEnum.indexOf(dataElement.value);
 		if (idx === -1) {
-			idx = settingEnum.indexOf(defaultOrEmptyString);
+			idx = 0;
 		}
 
 		template.onChange = undefined;

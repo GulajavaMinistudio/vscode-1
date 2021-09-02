@@ -1063,7 +1063,7 @@ declare module 'vscode' {
 		 */
 		group?: string;
 
-		/** 
+		/**
 		 * Controls whether the terminal is closed after executing the task.
 		 */
 		close?: boolean;
@@ -1101,6 +1101,11 @@ declare module 'vscode' {
 		 * An optional flag to sort the final results by index of first query match in label. Defaults to true.
 		 */
 		sortByLabel: boolean;
+
+		/*
+		 * An optional flag that can be set to true to maintain the scroll position of the quick pick when the quick pick items are updated. Defaults to false.
+		 */
+		keepScrollPosition?: boolean;
 	}
 
 	//#endregion
@@ -1884,23 +1889,16 @@ declare module 'vscode' {
 	 */
 	export class TestTag {
 		/**
-		 * Unique ID of the test tag.
+		 * ID of the test tag. `TestTag` instances with the same ID are considered
+		 * to be identical.
 		 */
 		readonly id: string;
 
 		/**
-		 * Human-readable name of the tag. If present, the tag will be visible as
-		 * a filter option in the UI.
-		 */
-		readonly label?: string;
-
-		/**
 		 * Creates a new TestTag instance.
-		 * @param id Unique ID of the test tag.
-		 * @param label Human-readable name of the tag.  If present, the tag will
-		 * be visible as a filter option in the UI.
+		 * @param id ID of the test tag.
 		 */
-		constructor(id: string, label?: string);
+		constructor(id: string);
 	}
 
 	export interface TestRunProfile {
@@ -2846,13 +2844,18 @@ declare module 'vscode' {
 
 	//#region https://github.com/microsoft/vscode/issues/129037
 
-
+	enum LanguageStatusSeverity {
+		Information = 0,
+		Warning = 1,
+		Error = 2
+	}
 
 	interface LanguageStatusItem {
 		readonly id: string;
 		selector: DocumentSelector;
-		needsAttention?: boolean;
-		name?: string;
+		// todo@jrieken replace with boolean ala needsAttention
+		severity: LanguageStatusSeverity;
+		name: string | undefined;
 		text: string;
 		detail?: string;
 		command: Command | undefined;

@@ -204,6 +204,7 @@ function _createTestNotebookEditor(instantiationService: TestInstantiationServic
 		override hasModel(): this is IActiveNotebookEditor {
 			return !!this.viewModel;
 		}
+		override getLength() { return viewModel.length; }
 		override getFocus() { return viewModel.getFocus(); }
 		override getSelections() { return viewModel.getSelections(); }
 		override setFocus(focus: ICellRange) {
@@ -249,6 +250,7 @@ function _createTestNotebookEditor(instantiationService: TestInstantiationServic
 		override cellAt(index: number) { return viewModel.cellAt(index)!; }
 		override getCellIndex(cell: ICellViewModel) { return viewModel.getCellIndex(cell); }
 		override getCellIndexByHandle(handle: number) { return viewModel.getCellIndexByHandle(handle); }
+		override getCellsInRange(range?: ICellRange) { return viewModel.getCells(range); }
 	};
 
 	return { editor: notebookEditor, viewModel };

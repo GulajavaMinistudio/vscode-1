@@ -428,6 +428,7 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	// from the old IEditor
 	readonly onDidChangeVisibleRanges: Event<void>;
 	readonly onDidChangeSelection: Event<void>;
+	getLength(): number;
 	getSelections(): ICellRange[];
 	setSelections(selections: ICellRange[]): void;
 	getFocus(): ICellRange;
@@ -439,6 +440,7 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	readonly creationOptions: INotebookEditorCreationOptions;
 
 	isEmbedded: boolean;
+	isReadOnly: boolean;
 
 	cursorNavigationMode: boolean;
 
@@ -712,6 +714,7 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	 * @return The contribution or null if contribution not found.
 	 */
 	getContribution<T extends INotebookEditorContribution>(id: string): T;
+	getCellsInRange(range?: ICellRange): ReadonlyArray<ICellViewModel>;
 	cellAt(index: number): ICellViewModel | undefined;
 	getCellByInfo(cellInfo: ICommonCellInfo): ICellViewModel;
 	getCellById(cellId: string): ICellViewModel | undefined;
@@ -1007,12 +1010,12 @@ export function getNotebookEditorFromEditorPane(editorPane?: IEditorPane): INote
  * ranges: model selections
  * this will convert model selections to view indexes first, and then include the hidden ranges in the list view
  */
-export function expandCellRangesWithHiddenCells(editor: INotebookEditor, viewModel: NotebookViewModel, ranges: ICellRange[]) {
+export function expandCellRangesWithHiddenCells(editor: INotebookEditor, ranges: ICellRange[]) {
 	// assuming ranges are sorted and no overlap
 	const indexes = cellRangesToIndexes(ranges);
 	let modelRanges: ICellRange[] = [];
 	indexes.forEach(index => {
-		const viewCell = viewModel.viewCells[index];
+		const viewCell = editor.cellAt(index);
 
 		if (!viewCell) {
 			return;
@@ -1057,10 +1060,10 @@ export function getRanges(cells: ICellViewModel[], included: (cell: ICellViewMod
 	return ranges;
 }
 
-export function cellRangeToViewCells(viewModel: NotebookViewModel, ranges: ICellRange[]) {
+export function cellRangeToViewCells(editor: IActiveNotebookEditor, ranges: ICellRange[]) {
 	const cells: ICellViewModel[] = [];
 	ranges.forEach(range => {
-		cells.push(...viewModel.getCells(range));
+		cells.push(...editor.getCellsInRange(range));
 	});
 
 	return cells;
