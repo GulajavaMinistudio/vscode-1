@@ -19,7 +19,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { FindMatch, IModelDeltaDecoration, IReadonlyTextBuffer, ITextModel } from 'vs/editor/common/model';
 import { ContextKeyExpr, RawContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { OutputRenderer } from 'vs/workbench/contrib/notebook/browser/view/output/outputRenderer';
-import { CellViewModel, IModelDecorationsChangeAccessor, NotebookViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/notebookViewModel';
+import { CellViewModel, IModelDecorationsChangeAccessor, INotebookViewCellsUpdateEvent, NotebookViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/notebookViewModel';
 import { NotebookCellTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookCellTextModel';
 import { CellKind, NotebookCellMetadata, IOrderedMimeType, INotebookRendererInfo, ICellOutput, IOutputItemDto, INotebookCellStatusBarItem, NotebookCellInternalMetadata, NotebookDocumentMetadata } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { ICellRange, cellRangesToIndexes, reduceRanges } from 'vs/workbench/contrib/notebook/common/notebookRange';
@@ -186,26 +186,6 @@ export interface INotebookCellOutputLayoutInfo {
 
 export interface IFocusNotebookCellOptions {
 	readonly skipReveal?: boolean;
-}
-
-export interface ICommonNotebookEditor {
-	readonly creationOptions: INotebookEditorCreationOptions;
-	getCellOutputLayoutInfo(cell: IGenericCellViewModel): INotebookCellOutputLayoutInfo;
-	setScrollTop(scrollTop: number): void;
-	triggerScroll(event: IMouseWheelEvent): void;
-	getCellByInfo(cellInfo: ICommonCellInfo): IGenericCellViewModel;
-	getCellById(cellId: string): IGenericCellViewModel | undefined;
-	toggleNotebookCellSelection(cell: IGenericCellViewModel, selectFromPrevious: boolean): void;
-	focusNotebookCell(cell: IGenericCellViewModel, focus: 'editor' | 'container' | 'output', options?: IFocusNotebookCellOptions): void;
-	focusNextNotebookCell(cell: IGenericCellViewModel, focus: 'editor' | 'container' | 'output'): void;
-	updateOutputHeight(cellInfo: ICommonCellInfo, output: IDisplayOutputViewModel, height: number, isInit: boolean, source?: string): void;
-	scheduleOutputHeightAck(cellInfo: ICommonCellInfo, outputId: string, height: number): void;
-	updateMarkupCellHeight(cellId: string, height: number, isInit: boolean): void;
-	setMarkupCellEditState(cellId: string, editState: CellEditState): void;
-	didStartDragMarkupCell(cellId: string, event: { dragOffsetY: number; }): void;
-	didDragMarkupCell(cellId: string, event: { dragOffsetY: number; }): void;
-	didDropMarkupCell(cellId: string, event: { dragOffsetY: number, ctrlKey: boolean, altKey: boolean; }): void;
-	didEndDragMarkupCell(cellId: string): void;
 }
 
 //#endregion
@@ -375,17 +355,6 @@ export interface INotebookEditorCreationOptions {
 	readonly options?: NotebookOptions;
 }
 
-export interface IActiveNotebookEditor extends INotebookEditor {
-	viewModel: NotebookViewModel;
-	_getViewModel(): NotebookViewModel;
-	textModel: NotebookTextModel;
-	getFocus(): ICellRange;
-	cellAt(index: number): ICellViewModel;
-	getCellIndex(cell: ICellViewModel): number;
-	getCellIndexByHandle(handle: number): number;
-	getNextVisibleCellIndex(index: number): number;
-}
-
 export enum NotebookViewEventType {
 	LayoutChanged = 1,
 	MetadataChanged = 2,
@@ -421,53 +390,48 @@ export class NotebookCellStateChangedEvent {
 export type NotebookViewEvent = NotebookLayoutChangedEvent | NotebookMetadataChangedEvent | NotebookCellStateChangedEvent;
 
 
-export interface INotebookEditor extends ICommonNotebookEditor {
+export interface INotebookEditor {
 	//#region Eventing
-	onDidChangeCellState: Event<NotebookCellStateChangedEvent>;
+	readonly onDidChangeCellState: Event<NotebookCellStateChangedEvent>;
+	readonly onDidChangeViewCells: Event<INotebookViewCellsUpdateEvent>;
+	readonly onDidChangeVisibleRanges: Event<void>;
+	readonly onDidChangeSelection: Event<void>;
+	/**
+	 * An event emitted when the model of this editor has changed.
+	 */
+	readonly onDidChangeModel: Event<NotebookTextModel | undefined>;
+	readonly onDidFocusEditorWidget: Event<void>;
+	readonly onDidScroll: Event<void>;
+	readonly onDidChangeActiveCell: Event<void>;
+	readonly onMouseUp: Event<INotebookEditorMouseEvent>;
+	readonly onMouseDown: Event<INotebookEditorMouseEvent>;
+
+	//#endregion
+
+	//#region readonly properties
+	readonly visibleRanges: ICellRange[];
+	readonly textModel?: NotebookTextModel;
+	readonly isReadOnly: boolean;
+	readonly notebookOptions: NotebookOptions;
+	readonly isDisposed: boolean;
+	readonly activeKernel: INotebookKernel | undefined;
 	//#endregion
 
 	// from the old IEditor
-	readonly onDidChangeVisibleRanges: Event<void>;
-	readonly onDidChangeSelection: Event<void>;
 	getLength(): number;
 	getSelections(): ICellRange[];
 	setSelections(selections: ICellRange[]): void;
 	getFocus(): ICellRange;
 	setFocus(focus: ICellRange): void;
-	visibleRanges: ICellRange[];
-	textModel?: NotebookTextModel;
 	getId(): string;
 	hasEditorFocus(): boolean;
-	readonly creationOptions: INotebookEditorCreationOptions;
-
-	isEmbedded: boolean;
-	isReadOnly: boolean;
 
 	cursorNavigationMode: boolean;
 
-	/**
-	 * Notebook view model attached to the current editor
-	 */
-	viewModel: NotebookViewModel | undefined;
 	_getViewModel(): NotebookViewModel | undefined;
 	hasModel(): this is IActiveNotebookEditor;
-
-	/**
-	 * An event emitted when the model of this editor has changed.
-	 * @event
-	 */
-	readonly onDidChangeModel: Event<NotebookTextModel | undefined>;
-	readonly onDidFocusEditorWidget: Event<void>;
-	readonly onDidScroll: Event<void>;
-
-	readonly onDidChangeActiveCell: Event<void>;
-	readonly notebookOptions: NotebookOptions;
-	isDisposed: boolean;
 	dispose(): void;
-
-	getId(): string;
 	getDomNode(): HTMLElement;
-	getOverflowContainerDomNode(): HTMLElement;
 	getInnerWebview(): Webview | undefined;
 	getSelectionViewModels(): ICellViewModel[];
 
@@ -510,33 +474,11 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	splitNotebookCell(cell: ICellViewModel): Promise<CellViewModel[] | null>;
 
 	/**
-	 * Delete a cell from the notebook
-	 */
-	deleteNotebookCell(cell: ICellViewModel): Promise<boolean>;
-
-	/**
-	 * Move a cell up one spot
-	 */
-	moveCellUp(cell: ICellViewModel): Promise<ICellViewModel | null>;
-
-	/**
-	 * Move a cell down one spot
-	 */
-	moveCellDown(cell: ICellViewModel): Promise<ICellViewModel | null>;
-
-	/**
-	 * Move a cell to a specific position
-	 */
-	moveCellsToIdx(index: number, length: number, toIdx: number): Promise<ICellViewModel | null>;
-
-	/**
 	 * Focus the container of a cell (the monaco editor inside is not focused).
 	 */
 	focusNotebookCell(cell: ICellViewModel, focus: 'editor' | 'container' | 'output', options?: IFocusNotebookCellOptions): void;
 
 	focusNextNotebookCell(cell: ICellViewModel, focus: 'editor' | 'container' | 'output'): void;
-
-	readonly activeKernel: INotebookKernel | undefined;
 
 	/**
 	 * Execute the given notebook cells
@@ -558,27 +500,12 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	 */
 	layoutNotebookCell(cell: ICellViewModel, height: number): Promise<void>;
 
-	createMarkupPreview(cell: ICellViewModel): Promise<void>;
-	unhideMarkupPreviews(cells: readonly ICellViewModel[]): Promise<void>;
-	hideMarkupPreviews(cells: readonly ICellViewModel[]): Promise<void>;
-
 	/**
 	 * Render the output in webview layer
 	 */
 	createOutput(cell: ICellViewModel, output: IInsetRenderOutput, offset: number): Promise<void>;
 
-	/**
-	 * Remove the output from the webview layer
-	 */
-	removeInset(output: IDisplayOutputViewModel): void;
-
-	/**
-	 * Hide the inset in the webview layer without removing it
-	 */
-	hideInset(output: IDisplayOutputViewModel): void;
-
-
-	onDidReceiveMessage: Event<INotebookWebviewMessage>;
+	readonly onDidReceiveMessage: Event<INotebookWebviewMessage>;
 
 	/**
 	 * Send message to the webview for outputs.
@@ -594,13 +521,6 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	 * Remove class name on the notebook editor root DOM node.
 	 */
 	removeClassName(className: string): void;
-
-	deltaCellOutputContainerClassNames(cellId: string, added: string[], removed: string[]): void;
-
-	/**
-	 * Trigger the editor to scroll from scroll event programmatically
-	 */
-	triggerScroll(event: IMouseWheelEvent): void;
 
 	/**
 	 * The range will be revealed with as little scrolling as possible.
@@ -698,18 +618,6 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	removeEditorDecorations(key: string): void;
 
 	/**
-	 * An event emitted on a "mouseup".
-	 * @event
-	 */
-	onMouseUp(listener: (e: INotebookEditorMouseEvent) => void): IDisposable;
-
-	/**
-	 * An event emitted on a "mousedown".
-	 * @event
-	 */
-	onMouseDown(listener: (e: INotebookEditorMouseEvent) => void): IDisposable;
-
-	/**
 	 * Get a contribution of this editor.
 	 * @id Unique identifier of the contribution.
 	 * @return The contribution or null if contribution not found.
@@ -717,13 +625,81 @@ export interface INotebookEditor extends ICommonNotebookEditor {
 	getContribution<T extends INotebookEditorContribution>(id: string): T;
 	getCellsInRange(range?: ICellRange): ReadonlyArray<ICellViewModel>;
 	cellAt(index: number): ICellViewModel | undefined;
-	getCellByInfo(cellInfo: ICommonCellInfo): ICellViewModel;
-	getCellById(cellId: string): ICellViewModel | undefined;
 	getCellByHandle(handle: number): ICellViewModel | undefined;
 	getCellIndex(cell: ICellViewModel): number | undefined;
 	getCellIndexByHandle(handle: number): number | undefined;
 	getNextVisibleCellIndex(index: number): number | undefined;
 	updateOutputHeight(cellInfo: ICommonCellInfo, output: IDisplayOutputViewModel, height: number, isInit: boolean, source?: string): void;
+}
+
+/**
+ * Editor delegate shared by the notebook editor and diff editor
+ */
+export interface ICommonNotebookEditorDelegate {
+	readonly creationOptions: INotebookEditorCreationOptions;
+	getCellOutputLayoutInfo(cell: IGenericCellViewModel): INotebookCellOutputLayoutInfo;
+	setScrollTop(scrollTop: number): void;
+	/**
+	 * Trigger the editor to scroll from scroll event programmatically
+	 */
+	triggerScroll(event: IMouseWheelEvent): void;
+	getCellByInfo(cellInfo: ICommonCellInfo): IGenericCellViewModel;
+	getCellById(cellId: string): IGenericCellViewModel | undefined;
+	toggleNotebookCellSelection(cell: IGenericCellViewModel, selectFromPrevious: boolean): void;
+	focusNotebookCell(cell: IGenericCellViewModel, focus: 'editor' | 'container' | 'output', options?: IFocusNotebookCellOptions): void;
+	focusNextNotebookCell(cell: IGenericCellViewModel, focus: 'editor' | 'container' | 'output'): void;
+	updateOutputHeight(cellInfo: ICommonCellInfo, output: IDisplayOutputViewModel, height: number, isInit: boolean, source?: string): void;
+	scheduleOutputHeightAck(cellInfo: ICommonCellInfo, outputId: string, height: number): void;
+	updateMarkupCellHeight(cellId: string, height: number, isInit: boolean): void;
+	setMarkupCellEditState(cellId: string, editState: CellEditState): void;
+	didStartDragMarkupCell(cellId: string, event: { dragOffsetY: number; }): void;
+	didDragMarkupCell(cellId: string, event: { dragOffsetY: number; }): void;
+	didDropMarkupCell(cellId: string, event: { dragOffsetY: number, ctrlKey: boolean, altKey: boolean; }): void;
+	didEndDragMarkupCell(cellId: string): void;
+}
+
+export interface IActiveNotebookEditor extends INotebookEditor {
+	_getViewModel(): NotebookViewModel;
+	textModel: NotebookTextModel;
+	getFocus(): ICellRange;
+	cellAt(index: number): ICellViewModel;
+	getCellIndex(cell: ICellViewModel): number;
+	getCellIndexByHandle(handle: number): number;
+	getNextVisibleCellIndex(index: number): number;
+}
+
+/**
+ * A mix of public interface and internal one (used by internal rendering code, e.g., cellRenderer)
+ */
+export interface INotebookEditorDelegate extends INotebookEditor, Omit<ICommonNotebookEditorDelegate, 'focusNotebookCell' | 'focusNextNotebookCell'> {
+	hasModel(): this is IActiveNotebookEditorDelegate;
+
+	readonly creationOptions: INotebookEditorCreationOptions;
+	readonly onDidChangeOptions: Event<void>;
+	createMarkupPreview(cell: ICellViewModel): Promise<void>;
+	unhideMarkupPreviews(cells: readonly ICellViewModel[]): Promise<void>;
+	hideMarkupPreviews(cells: readonly ICellViewModel[]): Promise<void>;
+
+	/**
+	 * Remove the output from the webview layer
+	 */
+	removeInset(output: IDisplayOutputViewModel): void;
+
+	/**
+	 * Hide the inset in the webview layer without removing it
+	 */
+	hideInset(output: IDisplayOutputViewModel): void;
+	deltaCellOutputContainerClassNames(cellId: string, added: string[], removed: string[]): void;
+}
+
+export interface IActiveNotebookEditorDelegate extends INotebookEditorDelegate, Omit<ICommonNotebookEditorDelegate, 'focusNotebookCell' | 'focusNextNotebookCell'> {
+	_getViewModel(): NotebookViewModel;
+	textModel: NotebookTextModel;
+	getFocus(): ICellRange;
+	cellAt(index: number): ICellViewModel;
+	getCellIndex(cell: ICellViewModel): number;
+	getCellIndexByHandle(handle: number): number;
+	getNextVisibleCellIndex(index: number): number;
 }
 
 export interface INotebookCellList {
