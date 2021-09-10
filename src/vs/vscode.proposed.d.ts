@@ -1555,12 +1555,14 @@ declare module 'vscode' {
 		provides: string[];
 
 		/**
-		 * URI for the file to preload
+		 * URI of the JavaScript module to preload.
+		 *
+		 * This module must export an `activate` function that takes a context object that contains the notebook API.
 		 */
 		uri: Uri;
 
 		/**
-		 * @param uri URI for the file to preload
+		 * @param uri URI of the JavaScript module to preload
 		 * @param provides Value for the `provides` property
 		 */
 		constructor(uri: Uri, provides?: string | string[]);
@@ -2906,7 +2908,7 @@ declare module 'vscode' {
 		 *
 		 * @param selector A selector that defines the documents this provider is applicable to.
 		 * @param provider A type hierarchy provider.
-		 * @returns {@link Disposable disposable} that unregisters this provider when being disposed.
+		 * @return {@link Disposable Disposable} that unregisters this provider when being disposed.
 		 */
 		export function registerTypeHierarchyProvider(selector: DocumentSelector, provider: TypeHierarchyProvider): Disposable;
 	}
