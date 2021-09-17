@@ -10,7 +10,7 @@ import { URI } from 'vs/base/common/uri';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { NullTelemetryService } from 'vs/platform/telemetry/common/telemetryUtils';
 import { EditorInput } from 'vs/workbench/common/editor/editorInput';
-import { IEditorInputWithOptions, IEditorIdentifier, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, IEditorPane, IEditorCloseEvent, IEditorPartOptions, IRevertOptions, GroupIdentifier, EditorsOrder, IFileEditorInput, IEditorFactoryRegistry, IEditorSerializer, EditorExtensions, ISaveOptions, IMoveResult, ITextDiffEditorPane, IVisibleEditorPane, IEditorOpenContext, IEditorMoveEvent, EditorExtensions as Extensions, EditorInputCapabilities, IEditorOpenEvent, IUntypedEditorInput } from 'vs/workbench/common/editor';
+import { IEditorInputWithOptions, IEditorIdentifier, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, IEditorPane, IEditorCloseEvent, IEditorPartOptions, IRevertOptions, GroupIdentifier, EditorsOrder, IFileEditorInput, IEditorFactoryRegistry, IEditorSerializer, EditorExtensions, ISaveOptions, IMoveResult, ITextDiffEditorPane, IVisibleEditorPane, IEditorOpenContext, EditorExtensions as Extensions, EditorInputCapabilities, IUntypedEditorInput, IEditorWillMoveEvent, IEditorWillOpenEvent } from 'vs/workbench/common/editor';
 import { EditorServiceImpl, IEditorGroupView, IEditorGroupsAccessor, IEditorGroupTitleHeight } from 'vs/workbench/browser/parts/editor/editor';
 import { Event, Emitter } from 'vs/base/common/event';
 import { IResolvedWorkingCopyBackup, IWorkingCopyBackupService } from 'vs/workbench/services/workingCopy/common/workingCopyBackup';
@@ -49,10 +49,10 @@ import { INotificationService } from 'vs/platform/notification/common/notificati
 import { TestNotificationService } from 'vs/platform/notification/test/common/testNotificationService';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
-import { IDecorationsService, IResourceDecorationChangeEvent, IDecoration, IDecorationData, IDecorationsProvider } from 'vs/workbench/services/decorations/browser/decorations';
+import { IDecorationsService, IResourceDecorationChangeEvent, IDecoration, IDecorationData, IDecorationsProvider } from 'vs/workbench/services/decorations/common/decorations';
 import { IDisposable, toDisposable, Disposable, DisposableStore } from 'vs/base/common/lifecycle';
 import { IEditorGroupsService, IEditorGroup, GroupsOrder, GroupsArrangement, GroupDirection, IAddGroupOptions, IMergeGroupOptions, IEditorReplacement, IGroupChangeEvent, IFindGroupScope, EditorGroupLayout, ICloseEditorOptions, GroupOrientation, ICloseAllEditorsOptions, ICloseEditorsFilter } from 'vs/workbench/services/editor/common/editorGroupsService';
-import { IEditorService, ISaveEditorsOptions, IRevertAllEditorsOptions, PreferredGroup } from 'vs/workbench/services/editor/common/editorService';
+import { IEditorService, ISaveEditorsOptions, IRevertAllEditorsOptions, PreferredGroup, IEditorsChangeEvent } from 'vs/workbench/services/editor/common/editorService';
 import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { IEditorPaneRegistry, EditorPaneDescriptor } from 'vs/workbench/browser/editor';
 import { Dimension, IDimension } from 'vs/base/browser/dom';
@@ -60,14 +60,12 @@ import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 import { ILabelService } from 'vs/platform/label/common/label';
 import { timeout } from 'vs/base/common/async';
 import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
-import { ViewletDescriptor, Viewlet } from 'vs/workbench/browser/viewlet';
-import { IViewlet } from 'vs/workbench/common/viewlet';
+import { PaneComposite, PaneCompositeDescriptor } from 'vs/workbench/browser/panecomposite';
 import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
 import { IProcessEnvironment, isLinux, isWindows, OperatingSystem } from 'vs/base/common/platform';
 import { LabelService } from 'vs/workbench/services/label/common/labelService';
 import { Part } from 'vs/workbench/browser/part';
 import { IPanelService } from 'vs/workbench/services/panel/common/panelService';
-import { IPanel } from 'vs/workbench/common/panel';
 import { IBadge } from 'vs/workbench/services/activity/common/activity';
 import { bufferToStream, VSBuffer, VSBufferReadable, VSBufferReadableStream } from 'vs/base/common/buffer';
 import { Schemas } from 'vs/base/common/network';
@@ -305,7 +303,8 @@ export class TestServiceAccessor {
 		@IWorkingCopyEditorService public workingCopyEditorService: IWorkingCopyEditorService,
 		@IInstantiationService public instantiationService: IInstantiationService,
 		@IElevatedFileService public elevatedFileService: IElevatedFileService,
-		@IWorkspaceTrustRequestService public workspaceTrustRequestService: TestWorkspaceTrustRequestService
+		@IWorkspaceTrustRequestService public workspaceTrustRequestService: TestWorkspaceTrustRequestService,
+		@IDecorationsService public decorationsService: IDecorationsService
 	) { }
 }
 
@@ -332,7 +331,8 @@ export class TestTextFileService extends BrowserTextFileService {
 		@IUriIdentityService uriIdentityService: IUriIdentityService,
 		@IModeService modeService: IModeService,
 		@ILogService logService: ILogService,
-		@IElevatedFileService elevatedFileService: IElevatedFileService
+		@IElevatedFileService elevatedFileService: IElevatedFileService,
+		@IDecorationsService decorationsService: IDecorationsService
 	) {
 		super(
 			fileService,
@@ -352,7 +352,8 @@ export class TestTextFileService extends BrowserTextFileService {
 			uriIdentityService,
 			modeService,
 			elevatedFileService,
-			logService
+			logService,
+			decorationsService
 		);
 	}
 
@@ -591,27 +592,27 @@ export class TestLayoutService implements IWorkbenchLayoutService {
 	focus() { }
 }
 
-let activeViewlet: Viewlet = {} as any;
+let activeViewlet: PaneComposite = {} as any;
 
 export class TestViewletService implements IViewletService {
 	declare readonly _serviceBrand: undefined;
 
-	onDidViewletRegisterEmitter = new Emitter<ViewletDescriptor>();
-	onDidViewletDeregisterEmitter = new Emitter<ViewletDescriptor>();
-	onDidViewletOpenEmitter = new Emitter<IViewlet>();
-	onDidViewletCloseEmitter = new Emitter<IViewlet>();
+	onDidViewletRegisterEmitter = new Emitter<PaneCompositeDescriptor>();
+	onDidViewletDeregisterEmitter = new Emitter<PaneCompositeDescriptor>();
+	onDidViewletOpenEmitter = new Emitter<IPaneComposite>();
+	onDidViewletCloseEmitter = new Emitter<IPaneComposite>();
 
 	onDidViewletRegister = this.onDidViewletRegisterEmitter.event;
 	onDidViewletDeregister = this.onDidViewletDeregisterEmitter.event;
 	onDidViewletOpen = this.onDidViewletOpenEmitter.event;
 	onDidViewletClose = this.onDidViewletCloseEmitter.event;
 
-	openViewlet(id: string, focus?: boolean): Promise<IViewlet | undefined> { return Promise.resolve(undefined); }
-	getViewlets(): ViewletDescriptor[] { return []; }
-	getAllViewlets(): ViewletDescriptor[] { return []; }
-	getActiveViewlet(): IViewlet { return activeViewlet; }
+	openViewlet(id: string, focus?: boolean): Promise<IPaneComposite | undefined> { return Promise.resolve(undefined); }
+	getViewlets(): PaneCompositeDescriptor[] { return []; }
+	getAllViewlets(): PaneCompositeDescriptor[] { return []; }
+	getActiveViewlet(): IPaneComposite { return activeViewlet; }
 	getDefaultViewletId(): string { return 'workbench.view.explorer'; }
-	getViewlet(id: string): ViewletDescriptor | undefined { return undefined; }
+	getViewlet(id: string): PaneCompositeDescriptor | undefined { return undefined; }
 	getProgressIndicator(id: string) { return undefined; }
 	hideActiveViewlet(): void { }
 	getLastActiveViewletId(): string { return undefined!; }
@@ -621,14 +622,14 @@ export class TestViewletService implements IViewletService {
 export class TestPanelService implements IPanelService {
 	declare readonly _serviceBrand: undefined;
 
-	onDidPanelOpen = new Emitter<{ panel: IPanel, focus: boolean; }>().event;
-	onDidPanelClose = new Emitter<IPanel>().event;
+	onDidPanelOpen = new Emitter<{ panel: IPaneComposite, focus: boolean; }>().event;
+	onDidPanelClose = new Emitter<IPaneComposite>().event;
 
 	async openPanel(id?: string, focus?: boolean): Promise<undefined> { return undefined; }
 	getPanel(id: string): any { return activeViewlet; }
 	getPanels() { return []; }
 	getPinnedPanels() { return []; }
-	getActivePanel(): IPanel { return activeViewlet; }
+	getActivePanel(): IPaneComposite { return activeViewlet; }
 	setPanelEnablement(id: string, enabled: boolean): void { }
 	dispose() { }
 	showActivity(panelId: string, badge: IBadge, clazz?: string): IDisposable { throw new Error('Method not implemented.'); }
@@ -744,8 +745,8 @@ export class TestEditorGroupView implements IEditorGroupView {
 	onDidOpenEditorFail: Event<EditorInput> = Event.None;
 	onDidFocus: Event<void> = Event.None;
 	onDidChange: Event<{ width: number; height: number; }> = Event.None;
-	onWillMoveEditor: Event<IEditorMoveEvent> = Event.None;
-	onWillOpenEditor: Event<IEditorOpenEvent> = Event.None;
+	onWillMoveEditor: Event<IEditorWillMoveEvent> = Event.None;
+	onWillOpenEditor: Event<IEditorWillOpenEvent> = Event.None;
 
 	getEditors(_order?: EditorsOrder): readonly EditorInput[] { return []; }
 	findEditors(_resource: URI): readonly EditorInput[] { return []; }
@@ -807,7 +808,7 @@ export class TestEditorService implements EditorServiceImpl {
 
 	onDidActiveEditorChange: Event<void> = Event.None;
 	onDidVisibleEditorsChange: Event<void> = Event.None;
-	onDidEditorsChange: Event<void> = Event.None;
+	onDidEditorsChange: Event<IEditorsChangeEvent[]> = Event.None;
 	onDidCloseEditor: Event<IEditorCloseEvent> = Event.None;
 	onDidOpenEditorFail: Event<IEditorIdentifier> = Event.None;
 	onDidMostRecentlyActiveEditorsChange: Event<void> = Event.None;
@@ -1696,6 +1697,7 @@ export class TestLocalTerminalService implements ILocalTerminalService {
 	updateIcon(id: number, icon: URI | { light: URI; dark: URI } | { id: string, color?: { id: string } }, color?: string): Promise<void> { throw new Error('Method not implemented.'); }
 	requestDetachInstance(workspaceId: string, instanceId: number): Promise<IProcessDetails | undefined> { throw new Error('Method not implemented.'); }
 	acceptDetachInstanceReply(requestId: number, persistentProcessId: number): Promise<void> { throw new Error('Method not implemented.'); }
+	persistTerminalState(): Promise<void> { throw new Error('Method not implemented.'); }
 }
 
 class TestTerminalChildProcess implements ITerminalChildProcess {

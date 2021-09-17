@@ -730,17 +730,86 @@ export interface IEditorCommandsContext {
 	editorIndex?: number;
 }
 
+/**
+ * More information around why an editor was closed in the model.
+ */
+export enum EditorCloseContext {
+
+	/**
+	 * No specific context for closing (e.g. explicit user gesture).
+	 */
+	UNKNOWN,
+
+	/**
+	 * The editor closed because it was in preview mode and got replaced.
+	 */
+	REPLACE,
+
+	/**
+	 * The editor closed as a result of moving it to another group.
+	 */
+	MOVE,
+
+	/**
+	 * The editor closed because another editor turned into preview
+	 * and this used to be the preview editor before.
+	 */
+	UNPIN
+}
+
 export interface IEditorCloseEvent extends IEditorIdentifier {
-	replaced: boolean;
-	index: number;
-	sticky: boolean;
+
+	/**
+	 * More information around why the editor was closed.
+	 */
+	readonly context: EditorCloseContext;
+
+	/**
+	 * The index of the editor before closing.
+	 */
+	readonly index: number;
+
+	/**
+	 * Whether the editor was sticky or not.
+	 */
+	readonly sticky: boolean;
+}
+
+export interface IEditorWillMoveEvent extends IEditorIdentifier {
+
+	/**
+	 * The target group of the move operation.
+	 */
+	readonly target: GroupIdentifier;
 }
 
 export interface IEditorMoveEvent extends IEditorIdentifier {
-	target: GroupIdentifier;
+
+	/**
+	 * The target group of the move operation.
+	 */
+	readonly target: GroupIdentifier;
+
+	/**
+	 * The index of the editor before moving.
+	 */
+	readonly index: number;
+
+	/**
+	 * The index of the editor after moving.
+	 */
+	readonly newIndex: number;
 }
 
-export interface IEditorOpenEvent extends IEditorIdentifier { }
+export interface IEditorWillOpenEvent extends IEditorIdentifier { }
+
+export interface IEditorOpenEvent extends IEditorIdentifier {
+
+	/**
+	 * The index the editor opens in.
+	 */
+	readonly index: number;
+}
 
 export type GroupIdentifier = number;
 
@@ -769,7 +838,7 @@ interface IEditorPartConfiguration {
 	openPositioning?: 'left' | 'right' | 'first' | 'last';
 	openSideBySideDirection?: 'right' | 'down';
 	closeEmptyGroups?: boolean;
-	experimentalAutoLockGroups?: Set<string>;
+	autoLockGroups?: Set<string>;
 	revealIfOpen?: boolean;
 	mouseBackForwardToNavigate?: boolean;
 	labelFormat?: 'default' | 'short' | 'medium' | 'long';
