@@ -187,7 +187,7 @@ export class CodeWindow extends Disposable implements ICodeWindow {
 				webPreferences: {
 					preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload.js', require).fsPath,
 					additionalArguments: [`--vscode-window-config=${this.configObjectUrl.resource.toString()}`],
-					v8CacheOptions: this.environmentMainService.useCodeCache ? 'code' : 'none',
+					v8CacheOptions: this.environmentMainService.useCodeCache ? 'bypassHeatCheck' : 'none',
 					enableWebSQL: false,
 					spellcheck: false,
 					nativeWindowOpen: true,
@@ -844,6 +844,7 @@ export class CodeWindow extends Disposable implements ICodeWindow {
 		if (this.isExtensionDevelopmentHost && cli) {
 			configuration.verbose = cli.verbose;
 			configuration.debugId = cli.debugId;
+			configuration.extensionEnvironment = cli.extensionEnvironment;
 			configuration['inspect-extensions'] = cli['inspect-extensions'];
 			configuration['inspect-brk-extensions'] = cli['inspect-brk-extensions'];
 			configuration['extensions-dir'] = cli['extensions-dir'];
