@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { ProxyChannel } from 'vs/base/parts/ipc/common/ipc';
-import { IWatcherService } from 'vs/platform/files/node/watcher/nsfw/watcher';
+import { IWatcherService } from 'vs/platform/files/node/watcher/parcel/watcher';
 import { IDiskFileChange, ILogMessage, IWatchRequest, WatcherService } from 'vs/platform/files/node/watcher/watcher';
 import { ISharedProcessWorkerWorkbenchService } from 'vs/workbench/services/ipc/electron-sandbox/sharedProcessWorkerWorkbenchService';
 
@@ -31,7 +31,7 @@ export class FileWatcher extends WatcherService {
 		// Acquire parcel watcher via shared process worker
 		const watcherChannel = this.sharedProcessWorkerWorkbenchService.createWorkerChannel({
 			moduleId: 'vs/platform/files/node/watcher/parcel/watcherApp',
-			type: 'sharedProcessParcelWatcherService'
+			type: 'watcherServiceParcelSharedProcess'
 		}, 'watcher');
 
 		// Initialize watcher
