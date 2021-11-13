@@ -68,3 +68,20 @@ Code cell outputs and markdown cells are rendered in the webview, which are asyn
 However, we **don't** warmup the previous viewport as the cell height change of previous viewport might trigger the flickering of markdown cells in current viewport. Before we optimize this, do not do any warmup of cells before current viewport.
 
 
+
+## Focus Tracking
+
+Due to the nature of virtualization (list view) and two layers architecture, the focus tracking is more complex compared to file explorer or monaco editor. When a notebook is *focused*, the `document.activeElement` can be
+
+* Monaco editor, when users focus on a cell editor
+  * `textarea` when users focus the text
+  * Widgets
+* Webview/iframe, when users focus on markdown cell or rich outputs rendered rendered in iframe
+* List view container, when users focus on cell container
+* Focusable element inside the notebook editor
+  * Builtin output (e.g., text output)
+  * Find Widget
+  * Cell statusbar
+  * Toolbars
+
+The catch here is if the focus is on a monaco editor, instead of the list view container, when the cell is moved out of view, the list view removes the cell row from the DOM tree. The `document.activeElement` will fall back `document.body` when that happens. To ensure that the notebook editor doesn't blur, we need to move focus back to list view container when the focused cell is moved out of view. More importantly, focus the cell editor again when the cell is visible again (if the cell is still the *active* cell).
