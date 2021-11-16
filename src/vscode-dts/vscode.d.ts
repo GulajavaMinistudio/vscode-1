@@ -8598,10 +8598,10 @@ declare module 'vscode' {
 		 *
 		 * @param command Identifier of the command to execute.
 		 * @param rest Parameters passed to the command function.
-		 * @return A thenable that resolves to the returned value of the given command. `undefined` when
+		 * @return A thenable that resolves to the returned value of the given command. Returns `undefined` when
 		 * the command handler function doesn't return anything.
 		 */
-		export function executeCommand<T>(command: string, ...rest: any[]): Thenable<T | undefined>;
+		export function executeCommand<T = unknown>(command: string, ...rest: any[]): Thenable<T>;
 
 		/**
 		 * Retrieve the list of all available commands. Commands starting with an underscore are
@@ -10784,6 +10784,11 @@ declare module 'vscode' {
 
 		/**
 		 * An event that is emitted when a workspace folder is added or removed.
+		 *
+		 * **Note:** this event will not fire if the first workspace folder is added, removed or changed,
+		 * because in that case the currently executing extensions (including the one that listens to this
+		 * event) will be terminated and restarted so that the (deprecated) `rootPath` property is updated
+		 * to point to the first workspace folder.
 		 */
 		export const onDidChangeWorkspaceFolders: Event<WorkspaceFoldersChangeEvent>;
 
