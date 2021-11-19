@@ -11,7 +11,6 @@ import { Action, IAction } from 'vs/base/common/actions';
 import { IMarkdownString } from 'vs/base/common/htmlContent';
 import { Disposable, DisposableStore, MutableDisposable } from 'vs/base/common/lifecycle';
 import { MarshalledId } from 'vs/base/common/marshalling';
-import { Schemas } from 'vs/base/common/network';
 import * as nls from 'vs/nls';
 import { createAndFillInActionBarActions } from 'vs/platform/actions/browser/menuEntryActionViewItem';
 import { IMenuService, MenuId } from 'vs/platform/actions/common/actions';
@@ -36,6 +35,7 @@ import { INotebookKernel } from 'vs/workbench/contrib/notebook/common/notebookKe
 import { OutputInnerContainerTopPadding } from 'vs/workbench/contrib/notebook/common/notebookOptions';
 import { INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
 import { IPaneCompositePartService } from 'vs/workbench/services/panecomposite/browser/panecomposite';
+import { CellPart } from 'vs/workbench/contrib/notebook/browser/view/cellParts/cellPart';
 
 interface IMimeTypeRenderer extends IQuickPickItem {
 	index: number;
@@ -557,7 +557,7 @@ class OutputEntryViewHandler {
 	}
 }
 
-export class CellOutputContainer extends Disposable {
+export class CellOutputContainer extends CellPart {
 	private _outputEntries: OutputEntryViewHandler[] = [];
 
 	get renderedOutputEntries() {
@@ -579,17 +579,21 @@ export class CellOutputContainer extends Disposable {
 		}));
 
 		this._register(viewCell.onDidChangeLayout(() => {
-			this._outputEntries.forEach(entry => {
-				const index = viewCell.outputsViewModels.indexOf(entry.model);
-				if (index >= 0) {
-					const top = this.viewCell.getOutputOffsetInContainer(index);
-					entry.element.updateDOMTop(top);
-				}
-			});
+			this.updateLayoutNow(viewCell);
 		}));
 	}
 
-	probeHeight() {
+	updateLayoutNow(viewCell: CodeCellViewModel) {
+		this._outputEntries.forEach(entry => {
+			const index = this.viewCell.outputsViewModels.indexOf(entry.model);
+			if (index >= 0) {
+				const top = this.viewCell.getOutputOffsetInContainer(index);
+				entry.element.updateDOMTop(top);
+			}
+		});
+	}
+
+	prepareRender() {
 		this._outputEntries.forEach(entry => {
 			const index = this.viewCell.outputsViewModels.indexOf(entry.model);
 			if (index >= 0) {
@@ -862,7 +866,7 @@ export class CellOutputContainer extends Disposable {
 			actionHandler: {
 				callback: (content) => {
 					if (content === 'command:workbench.action.openLargeOutput') {
-						this.openerService.open(CellUri.generateCellUri(this.notebookEditor.textModel!.uri, this.viewCell.handle, Schemas.vscodeNotebookCellOutput));
+						this.openerService.open(CellUri.generateCellOutputUri(this.notebookEditor.textModel!.uri, this.viewCell.handle));
 					}
 
 					return;
