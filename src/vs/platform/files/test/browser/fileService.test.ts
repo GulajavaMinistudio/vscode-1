@@ -4,8 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
+import { scheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
 import { timeout } from 'vs/base/common/async';
-import { CancellationToken } from 'vs/base/common/cancellation';
+import { CancellationToken, CancellationTokenSource } from 'vs/base/common/cancellation';
 import { IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { consumeStream, newWriteableStream, ReadableStreamEvents } from 'vs/base/common/stream';
 import { URI } from 'vs/base/common/uri';
@@ -299,4 +300,58 @@ suite('File Service', () => {
 
 		disposable.dispose();
 	}
+
+	test('readFile/readFileStream supports cancellation (https://github.com/microsoft/vscode/issues/138805)', async () => {
+		const service = new FileService(new NullLogService());
+
+		const provider = new class extends NullFileSystemProvider {
+
+			override async stat(resource: URI): Promise<IStat> {
+				return {
+					mtime: Date.now(),
+					ctime: Date.now(),
+					size: 100,
+					type: FileType.File
+				};
+			}
+
+			readFileStream(resource: URI, opts: FileReadStreamOptions, token: CancellationToken): ReadableStreamEvents<Uint8Array> {
+				const stream = newWriteableStream<Uint8Array>(chunk => chunk[0]);
+				token.onCancellationRequested(() => stream.error(new Error('Expected cancellation')));
+
+				return stream;
+			}
+		};
+
+		const disposable = service.registerProvider('test', provider);
+
+		provider.setCapabilities(FileSystemProviderCapabilities.FileReadStream);
+
+
+		let e1;
+		try {
+			const cts = new CancellationTokenSource();
+			const promise = service.readFile(URI.parse('test://foo/bar'), undefined, cts.token);
+			scheduleAtNextAnimationFrame(() => cts.cancel());
+			await promise;
+		} catch (error) {
+			e1 = error;
+		}
+
+		assert.ok(e1);
+
+		let e2;
+		try {
+			const cts = new CancellationTokenSource();
+			const stream = await service.readFileStream(URI.parse('test://foo/bar'), undefined, cts.token);
+			scheduleAtNextAnimationFrame(() => cts.cancel());
+			await consumeStream(stream.value, chunk => chunk[0]);
+		} catch (error) {
+			e2 = error;
+		}
+
+		assert.ok(e2);
+
+		disposable.dispose();
+	});
 });
