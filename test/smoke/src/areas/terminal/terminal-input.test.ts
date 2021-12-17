@@ -27,14 +27,14 @@ export function setup() {
 			it('should automatically reply to default "Terminate batch job (Y/N)"', async () => {
 				await terminal.createTerminal();
 				await writeTextForAutoReply('Terminate batch job (Y/N)?');
-				await terminal.waitForTerminalText(buffer => buffer.some(line => line.includes('Terminate batch job (Y/N)?Y')));
+				await terminal.waitForTerminalText(buffer => buffer.some(line => line.match(/\?.*Y/)));
 			});
 
 			it('should automatically reply to a custom entry', async () => {
 				await settingsEditor.addUserSetting('terminal.integrated.autoReplies', '{ "foo": "bar" }');
 				await terminal.createTerminal();
 				await writeTextForAutoReply('foo');
-				await terminal.waitForTerminalText(buffer => buffer.some(line => line.includes('foobar')));
+				await terminal.waitForTerminalText(buffer => buffer.some(line => line.match(/foo.*bar/)));
 			});
 		});
 	});
