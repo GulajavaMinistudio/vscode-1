@@ -279,11 +279,12 @@ export class LanguagesRegistry extends Disposable {
 		return this._languages[languageId].name;
 	}
 
-	public getLanguageIdForLanguageName(languageNameLower: string): string | null {
+	public getLanguageIdForLanguageName(languageName: string): string | null {
+		const languageNameLower = languageName.toLowerCase();
 		if (!hasOwnProperty.call(this._lowercaseNameMap, languageNameLower)) {
 			return null;
 		}
-		return this._lowercaseNameMap[languageNameLower];
+		return this._nameMap[languageNameLower];
 	}
 
 	public getLanguageIdForMimeType(mimeType: string | null | undefined): string | null {
@@ -311,7 +312,7 @@ export class LanguagesRegistry extends Disposable {
 		return (language.mimetypes[0] || null);
 	}
 
-	public extractModeIds(commaSeparatedMimetypesOrCommaSeparatedIds: string | undefined): string[] {
+	private _extractModeIds(commaSeparatedMimetypesOrCommaSeparatedIds: string | undefined): string[] {
 		if (!commaSeparatedMimetypesOrCommaSeparatedIds) {
 			return [];
 		}
@@ -359,7 +360,7 @@ export class LanguagesRegistry extends Disposable {
 			return [];
 		}
 		let mimeTypes = mime.guessMimeTypes(resource, firstLine);
-		return this.extractModeIds(mimeTypes.join(','));
+		return this._extractModeIds(mimeTypes.join(','));
 	}
 
 	public getExtensions(languageName: string): string[] {
