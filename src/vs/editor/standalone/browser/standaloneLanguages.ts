@@ -8,20 +8,20 @@ import { Color } from 'vs/base/common/color';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { Position } from 'vs/editor/common/core/position';
 import { Range } from 'vs/editor/common/core/range';
-import { Token, TokenizationResult, TokenizationResult2 } from 'vs/editor/common/core/token';
+import { Token, TokenizationResult, EncodedTokenizationResult } from 'vs/editor/common/core/token';
 import * as model from 'vs/editor/common/model';
 import * as modes from 'vs/editor/common/modes';
 import { LanguageConfiguration } from 'vs/editor/common/modes/languageConfiguration';
 import { LanguageConfigurationRegistry } from 'vs/editor/common/modes/languageConfigurationRegistry';
 import { ModesRegistry } from 'vs/editor/common/modes/modesRegistry';
-import { ILanguageExtensionPoint, ILanguageService } from 'vs/editor/common/services/languageService';
+import { ILanguageExtensionPoint, ILanguageService } from 'vs/editor/common/services/language';
 import * as standaloneEnums from 'vs/editor/common/standalone/standaloneEnums';
-import { StaticServices } from 'vs/editor/standalone/browser/standaloneServices';
+import { StandaloneServices } from 'vs/editor/standalone/browser/standaloneServices';
 import { compile } from 'vs/editor/standalone/common/monarch/monarchCompile';
-import { createTokenizationSupport } from 'vs/editor/standalone/common/monarch/monarchLexer';
+import { MonarchTokenizer } from 'vs/editor/standalone/common/monarch/monarchLexer';
 import { IMonarchLanguage } from 'vs/editor/standalone/common/monarch/monarchTypes';
-import { IStandaloneThemeService } from 'vs/editor/standalone/common/standaloneThemeService';
-import { IMarkerData } from 'vs/platform/markers/common/markers';
+import { IStandaloneThemeService } from 'vs/editor/standalone/common/standaloneTheme';
+import { IMarkerData, IMarkerService } from 'vs/platform/markers/common/markers';
 
 /**
  * Register information about a new language.
@@ -40,16 +40,17 @@ export function getLanguages(): ILanguageExtensionPoint[] {
 }
 
 export function getEncodedLanguageId(languageId: string): number {
-	const languageService = StaticServices.languageService.get();
+	const languageService = StandaloneServices.get(ILanguageService);
 	return languageService.languageIdCodec.encodeLanguageId(languageId);
 }
 
 /**
- * An event emitted when a language is first time needed (e.g. a model has it set).
+ * An event emitted when a language is needed for the first time (e.g. a model has it set).
  * @event
  */
 export function onLanguage(languageId: string, callback: () => void): IDisposable {
-	let disposable = StaticServices.languageService.get().onDidEncounterLanguage((encounteredLanguageId) => {
+	const languageService = StandaloneServices.get(ILanguageService);
+	const disposable = languageService.onDidEncounterLanguage((encounteredLanguageId) => {
 		if (encounteredLanguageId === languageId) {
 			// stop listening
 			disposable.dispose();
@@ -64,17 +65,17 @@ export function onLanguage(languageId: string, callback: () => void): IDisposabl
  * Set the editing configuration for a language.
  */
 export function setLanguageConfiguration(languageId: string, configuration: LanguageConfiguration): IDisposable {
-	const validLanguageId = StaticServices.languageService.get().validateLanguageId(languageId);
-	if (!validLanguageId) {
+	const languageService = StandaloneServices.get(ILanguageService);
+	if (!languageService.isRegisteredLanguageId(languageId)) {
 		throw new Error(`Cannot set configuration for unknown language ${languageId}`);
 	}
-	return LanguageConfigurationRegistry.register(validLanguageId, configuration, 100);
+	return LanguageConfigurationRegistry.register(languageId, configuration, 100);
 }
 
 /**
  * @internal
  */
-export class EncodedTokenizationSupport2Adapter implements modes.ITokenizationSupport {
+export class EncodedTokenizationSupportAdapter implements modes.ITokenizationSupport {
 
 	private readonly _languageId: string;
 	private readonly _actual: EncodedTokensProvider;
@@ -88,23 +89,23 @@ export class EncodedTokenizationSupport2Adapter implements modes.ITokenizationSu
 		return this._actual.getInitialState();
 	}
 
-	public tokenize(line: string, hasEOL: boolean, state: modes.IState, offsetDelta: number): TokenizationResult {
+	public tokenize(line: string, hasEOL: boolean, state: modes.IState): TokenizationResult {
 		if (typeof this._actual.tokenize === 'function') {
-			return TokenizationSupport2Adapter.adaptTokenize(this._languageId, <{ tokenize(line: string, state: modes.IState): ILineTokens; }>this._actual, line, state, offsetDelta);
+			return TokenizationSupportAdapter.adaptTokenize(this._languageId, <{ tokenize(line: string, state: modes.IState): ILineTokens; }>this._actual, line, state);
 		}
 		throw new Error('Not supported!');
 	}
 
-	public tokenize2(line: string, hasEOL: boolean, state: modes.IState): TokenizationResult2 {
+	public tokenizeEncoded(line: string, hasEOL: boolean, state: modes.IState): EncodedTokenizationResult {
 		let result = this._actual.tokenizeEncoded(line, state);
-		return new TokenizationResult2(result.tokens, result.endState);
+		return new EncodedTokenizationResult(result.tokens, result.endState);
 	}
 }
 
 /**
  * @internal
  */
-export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
+export class TokenizationSupportAdapter implements modes.ITokenizationSupport {
 
 	constructor(
 		private readonly _languageId: string,
@@ -118,7 +119,7 @@ export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
 		return this._actual.getInitialState();
 	}
 
-	private static _toClassicTokens(tokens: IToken[], language: string, offsetDelta: number): Token[] {
+	private static _toClassicTokens(tokens: IToken[], language: string): Token[] {
 		let result: Token[] = [];
 		let previousStartIndex: number = 0;
 		for (let i = 0, len = tokens.length; i < len; i++) {
@@ -134,16 +135,16 @@ export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
 				startIndex = previousStartIndex;
 			}
 
-			result[i] = new Token(startIndex + offsetDelta, t.scopes, language);
+			result[i] = new Token(startIndex, t.scopes, language);
 
 			previousStartIndex = startIndex;
 		}
 		return result;
 	}
 
-	public static adaptTokenize(language: string, actual: { tokenize(line: string, state: modes.IState): ILineTokens; }, line: string, state: modes.IState, offsetDelta: number): TokenizationResult {
+	public static adaptTokenize(language: string, actual: { tokenize(line: string, state: modes.IState): ILineTokens; }, line: string, state: modes.IState): TokenizationResult {
 		let actualResult = actual.tokenize(line, state);
-		let tokens = TokenizationSupport2Adapter._toClassicTokens(actualResult.tokens, language, offsetDelta);
+		let tokens = TokenizationSupportAdapter._toClassicTokens(actualResult.tokens, language);
 
 		let endState: modes.IState;
 		// try to save an object if possible
@@ -156,11 +157,11 @@ export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
 		return new TokenizationResult(tokens, endState);
 	}
 
-	public tokenize(line: string, hasEOL: boolean, state: modes.IState, offsetDelta: number): TokenizationResult {
-		return TokenizationSupport2Adapter.adaptTokenize(this._languageId, this._actual, line, state, offsetDelta);
+	public tokenize(line: string, hasEOL: boolean, state: modes.IState): TokenizationResult {
+		return TokenizationSupportAdapter.adaptTokenize(this._languageId, this._actual, line, state);
 	}
 
-	private _toBinaryTokens(languageIdCodec: modes.ILanguageIdCodec, tokens: IToken[], offsetDelta: number): Uint32Array {
+	private _toBinaryTokens(languageIdCodec: modes.ILanguageIdCodec, tokens: IToken[]): Uint32Array {
 		const languageId = languageIdCodec.encodeLanguageId(this._languageId);
 		const tokenTheme = this._standaloneThemeService.getColorTheme().tokenTheme;
 
@@ -185,7 +186,7 @@ export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
 				startIndex = previousStartIndex;
 			}
 
-			result[resultLen++] = startIndex + offsetDelta;
+			result[resultLen++] = startIndex;
 			result[resultLen++] = metadata;
 
 			previousStartIndex = startIndex;
@@ -198,9 +199,9 @@ export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
 		return actualResult;
 	}
 
-	public tokenize2(line: string, hasEOL: boolean, state: modes.IState, offsetDelta: number): TokenizationResult2 {
+	public tokenizeEncoded(line: string, hasEOL: boolean, state: modes.IState): EncodedTokenizationResult {
 		let actualResult = this._actual.tokenize(line, state);
-		let tokens = this._toBinaryTokens(this._languageService.languageIdCodec, actualResult.tokens, offsetDelta);
+		let tokens = this._toBinaryTokens(this._languageService.languageIdCodec, actualResult.tokens);
 
 		let endState: modes.IState;
 		// try to save an object if possible
@@ -210,7 +211,7 @@ export class TokenizationSupport2Adapter implements modes.ITokenizationSupport {
 			endState = actualResult.endState;
 		}
 
-		return new TokenizationResult2(tokens, endState);
+		return new EncodedTokenizationResult(tokens, endState);
 	}
 }
 
@@ -325,14 +326,15 @@ function isThenable<T>(obj: any): obj is Thenable<T> {
  * Supported formats (hex): #RRGGBB, $RRGGBBAA, #RGB, #RGBA
  */
 export function setColorMap(colorMap: string[] | null): void {
+	const standaloneThemeService = StandaloneServices.get(IStandaloneThemeService);
 	if (colorMap) {
 		const result: Color[] = [null!];
 		for (let i = 1, len = colorMap.length; i < len; i++) {
 			result[i] = Color.fromHex(colorMap[i]);
 		}
-		StaticServices.standaloneThemeService.get().setColorMapOverride(result);
+		standaloneThemeService.setColorMapOverride(result);
 	} else {
-		StaticServices.standaloneThemeService.get().setColorMapOverride(null);
+		standaloneThemeService.setColorMapOverride(null);
 	}
 }
 
@@ -341,13 +343,13 @@ export function setColorMap(colorMap: string[] | null): void {
  */
 function createTokenizationSupportAdapter(languageId: string, provider: TokensProvider | EncodedTokensProvider) {
 	if (isEncodedTokensProvider(provider)) {
-		return new EncodedTokenizationSupport2Adapter(languageId, provider);
+		return new EncodedTokenizationSupportAdapter(languageId, provider);
 	} else {
-		return new TokenizationSupport2Adapter(
+		return new TokenizationSupportAdapter(
 			languageId,
 			provider,
-			StaticServices.languageService.get(),
-			StaticServices.standaloneThemeService.get(),
+			StandaloneServices.get(ILanguageService),
+			StandaloneServices.get(IStandaloneThemeService),
 		);
 	}
 }
@@ -367,7 +369,7 @@ export function registerTokensProviderFactory(languageId: string, factory: Token
 			if (isATokensProvider(result)) {
 				return createTokenizationSupportAdapter(languageId, result);
 			}
-			return createTokenizationSupport(StaticServices.languageService.get(), StaticServices.standaloneThemeService.get(), languageId, compile(languageId, result));
+			return new MonarchTokenizer(StandaloneServices.get(ILanguageService), StandaloneServices.get(IStandaloneThemeService), languageId, compile(languageId, result));
 		}
 	};
 	return modes.TokenizationRegistry.registerFactory(languageId, adaptedFactory);
@@ -380,14 +382,14 @@ export function registerTokensProviderFactory(languageId: string, factory: Token
  * or `registerDocumentRangeSemanticTokensProvider`.
  */
 export function setTokensProvider(languageId: string, provider: TokensProvider | EncodedTokensProvider | Thenable<TokensProvider | EncodedTokensProvider>): IDisposable {
-	const validLanguageId = StaticServices.languageService.get().validateLanguageId(languageId);
-	if (!validLanguageId) {
+	const languageService = StandaloneServices.get(ILanguageService);
+	if (!languageService.isRegisteredLanguageId(languageId)) {
 		throw new Error(`Cannot set tokens provider for unknown language ${languageId}`);
 	}
 	if (isThenable<TokensProvider | EncodedTokensProvider>(provider)) {
 		return registerTokensProviderFactory(languageId, { create: () => provider });
 	}
-	return modes.TokenizationRegistry.register(languageId, createTokenizationSupportAdapter(validLanguageId, provider));
+	return modes.TokenizationRegistry.register(languageId, createTokenizationSupportAdapter(languageId, provider));
 }
 
 /**
@@ -398,7 +400,7 @@ export function setTokensProvider(languageId: string, provider: TokensProvider |
  */
 export function setMonarchTokensProvider(languageId: string, languageDef: IMonarchLanguage | Thenable<IMonarchLanguage>): IDisposable {
 	const create = (languageDef: IMonarchLanguage) => {
-		return createTokenizationSupport(StaticServices.languageService.get(), StaticServices.standaloneThemeService.get(), languageId, compile(languageId, languageDef));
+		return new MonarchTokenizer(StandaloneServices.get(ILanguageService), StandaloneServices.get(IStandaloneThemeService), languageId, compile(languageId, languageDef));
 	};
 	if (isThenable<IMonarchLanguage>(languageDef)) {
 		return registerTokensProviderFactory(languageId, { create: () => languageDef });
@@ -507,7 +509,8 @@ export function registerCodeActionProvider(languageId: string, provider: CodeAct
 	return modes.CodeActionProviderRegistry.register(languageId, {
 		providedCodeActionKinds: metadata?.providedCodeActionKinds,
 		provideCodeActions: (model: model.ITextModel, range: Range, context: modes.CodeActionContext, token: CancellationToken): modes.ProviderResult<modes.CodeActionList> => {
-			let markers = StaticServices.markerService.get().read({ resource: model.uri }).filter(m => {
+			const markerService = StandaloneServices.get(IMarkerService);
+			const markers = markerService.read({ resource: model.uri }).filter(m => {
 				return Range.areIntersectingOrTouching(m, range);
 			});
 			return provider.provideCodeActions(model, range, { markers, only: context.only }, token);

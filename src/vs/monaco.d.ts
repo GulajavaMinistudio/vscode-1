@@ -3300,6 +3300,7 @@ declare namespace monaco.editor {
 		*/
 		guides?: IGuidesOptions;
 		unicodeHighlight?: IUnicodeHighlightOptions;
+		bracketPairColorization?: IBracketPairColorizationOptions;
 	}
 
 	export interface IDiffEditorBaseOptions {
@@ -3374,8 +3375,8 @@ declare namespace monaco.editor {
 		get<T extends EditorOption>(id: T): FindComputedEditorOptionValueById<T>;
 	}
 
-	export interface IEditorOption<K1 extends EditorOption, V> {
-		readonly id: K1;
+	export interface IEditorOption<K extends EditorOption, V> {
+		readonly id: K;
 		readonly name: string;
 		defaultValue: V;
 		/**
@@ -5144,9 +5145,9 @@ declare namespace monaco.editor {
 	 */
 	export interface IDiffEditor extends IEditor {
 		/**
-		 * @see {@link ICodeEditor.getDomNode}
+		 * @see {@link ICodeEditor.getContainerDomNode}
 		 */
-		getDomNode(): HTMLElement;
+		getContainerDomNode(): HTMLElement;
 		/**
 		 * An event emitted when the diff information computed by this diff editor has been updated.
 		 * @event
@@ -5248,7 +5249,7 @@ declare namespace monaco.languages {
 	export function getEncodedLanguageId(languageId: string): number;
 
 	/**
-	 * An event emitted when a language is first time needed (e.g. a model has it set).
+	 * An event emitted when a language is needed for the first time (e.g. a model has it set).
 	 * @event
 	 */
 	export function onLanguage(languageId: string, callback: () => void): IDisposable;

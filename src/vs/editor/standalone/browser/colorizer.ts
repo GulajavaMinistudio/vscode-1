@@ -7,10 +7,10 @@ import * as strings from 'vs/base/common/strings';
 import { IViewLineTokens, LineTokens } from 'vs/editor/common/core/lineTokens';
 import { ITextModel } from 'vs/editor/common/model';
 import { ColorId, FontStyle, ILanguageIdCodec, ITokenizationSupport, MetadataConsts, TokenizationRegistry } from 'vs/editor/common/modes';
-import { ILanguageService } from 'vs/editor/common/services/languageService';
+import { ILanguageService } from 'vs/editor/common/services/language';
 import { RenderLineInput, renderViewLine2 as renderViewLine } from 'vs/editor/common/viewLayout/viewLineRenderer';
 import { ViewLineRenderingData } from 'vs/editor/common/viewModel/viewModel';
-import { IStandaloneThemeService } from 'vs/editor/standalone/common/standaloneThemeService';
+import { IStandaloneThemeService } from 'vs/editor/standalone/common/standaloneTheme';
 import { MonarchTokenizer } from 'vs/editor/standalone/common/monarch/monarchLexer';
 
 const ttPolicy = window.trustedTypes?.createPolicy('standaloneColorizer', { createHTML: value => value });
@@ -34,7 +34,7 @@ export class Colorizer {
 			console.error('Mode not detected');
 			return Promise.resolve();
 		}
-		const languageId = languageService.getLanguageIdForMimeType(mimeType) || mimeType;
+		const languageId = languageService.getLanguageIdByMimeType(mimeType) || mimeType;
 
 		themeService.setTheme(theme);
 
@@ -179,7 +179,7 @@ function _actualColorize(lines: string[], tabSize: number, tokenizationSupport: 
 
 	for (let i = 0, length = lines.length; i < length; i++) {
 		let line = lines[i];
-		let tokenizeResult = tokenizationSupport.tokenize2(line, true, state, 0);
+		let tokenizeResult = tokenizationSupport.tokenizeEncoded(line, true, state);
 		LineTokens.convertToEndOffset(tokenizeResult.tokens, line.length);
 		let lineTokens = new LineTokens(tokenizeResult.tokens, line, languageIdCodec);
 		const isBasicASCII = ViewLineRenderingData.isBasicASCII(line, /* check for basic ASCII */true);
