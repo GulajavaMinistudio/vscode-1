@@ -25,7 +25,7 @@ import { ICssStyleCollector, IColorTheme, IThemeService, registerThemingParticip
 import { TerminalWidgetManager } from 'vs/workbench/contrib/terminal/browser/widgets/widgetManager';
 import { ITerminalProcessManager, ProcessState, TERMINAL_VIEW_ID, INavigationMode, DEFAULT_COMMANDS_TO_SKIP_SHELL, TERMINAL_CREATION_COMMANDS, ITerminalProfileResolverService, TerminalCommandId, ITerminalBackend } from 'vs/workbench/contrib/terminal/common/terminal';
 import { TerminalConfigHelper } from 'vs/workbench/contrib/terminal/browser/terminalConfigHelper';
-import { TerminalLinkManager, TerminalLinkProviderType } from 'vs/workbench/contrib/terminal/browser/links/terminalLinkManager';
+import { IDetectedLinks, TerminalLinkManager } from 'vs/workbench/contrib/terminal/browser/links/terminalLinkManager';
 import { IAccessibilityService } from 'vs/platform/accessibility/common/accessibility';
 import { ITerminalInstance, ITerminalExternalLinkProvider, IRequestAddInstanceToGroupEvent } from 'vs/workbench/contrib/terminal/browser/terminal';
 import { TerminalProcessManager } from 'vs/workbench/contrib/terminal/browser/terminalProcessManager';
@@ -66,8 +66,9 @@ import { LineDataEventAddon } from 'vs/workbench/contrib/terminal/browser/xterm/
 import { XtermTerminal } from 'vs/workbench/contrib/terminal/browser/xterm/xtermTerminal';
 import { escapeNonWindowsPath } from 'vs/platform/terminal/common/terminalEnvironment';
 import { IWorkspaceTrustRequestService } from 'vs/platform/workspace/common/workspaceTrust';
-import { TerminalLinkQuickpick } from 'vs/workbench/contrib/terminal/browser/terminalLinkQuickpick';
 import { isFirefox } from 'vs/base/browser/browser';
+import { TerminalLinkQuickpick } from 'vs/workbench/contrib/terminal/browser/links/terminalLinkQuickpick';
+import { fromNow } from 'vs/base/common/date';
 
 const enum Constants {
 	/**
@@ -611,7 +612,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 		});
 		// Init winpty compat and link handler after process creation as they rely on the
 		// underlying process OS
-		this._processManager.onProcessReady((processTraits) => {
+		this._processManager.onProcessReady(async (processTraits) => {
 			// If links are ready, do not re-create the manager.
 			if (this._areLinksReady) {
 				return;
@@ -657,32 +658,90 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 		}
 	}
 
-	async showLinkQuickpick(type: TerminalLinkProviderType): Promise<void> {
+	async showLinkQuickpick(): Promise<void> {
 		if (!this._terminalLinkQuickpick) {
 			this._terminalLinkQuickpick = this._instantiationService.createInstance(TerminalLinkQuickpick);
 		}
-		const links = await this._getLinks(type);
+		const links = await this._getLinks();
 		if (!links) {
 			return;
 		}
-		return await this._terminalLinkQuickpick.show(type, links);
+		return await this._terminalLinkQuickpick.show(links);
 	}
 
-	private async _getLinks(type: TerminalLinkProviderType): Promise<ILink[] | undefined> {
+	private async _getLinks(): Promise<IDetectedLinks | undefined> {
 		if (!this.areLinksReady || !this._linkManager) {
 			throw new Error('terminal links are not ready, cannot generate link quick pick');
 		}
 		if (!this.xterm) {
 			throw new Error('no xterm');
 		}
-		const links = [];
+		const wordResults: ILink[] = [];
+		const webResults: ILink[] = [];
+		const fileResults: ILink[] = [];
+
 		for (let i = this.xterm.raw.buffer.active.length - 1; i >= this.xterm.raw.buffer.active.viewportY; i--) {
-			const linksForY = await this._linkManager.getLinks(type, i);
-			if (linksForY) {
-				links.push(...linksForY);
+			const links = await this._linkManager.getLinks(i);
+			if (links) {
+				const { wordLinks, webLinks, fileLinks } = links;
+				if (wordLinks && wordLinks.length) {
+					wordResults!.push(...wordLinks.reverse());
+				}
+				if (webLinks && webLinks.length) {
+					webResults!.push(...webLinks.reverse());
+				}
+				if (fileLinks && fileLinks.length) {
+					fileResults!.push(...fileLinks.reverse());
+				}
 			}
 		}
-		return links.length > 0 ? links : undefined;
+		return { wordLinks: wordResults, webLinks: webResults, fileLinks: fileResults };
+	}
+
+	async runRecent(type: 'command' | 'cwd'): Promise<void> {
+		const commands = this.xterm?.commandTracker.commands;
+		if (!commands || !this.xterm) {
+			return;
+		}
+		type Item = IQuickPickItem;
+		const items: Item[] = [];
+		if (type === 'command') {
+			for (const { command, timestamp, cwd, exitCode } of commands) {
+				// trim off any whitespace and/or line endings
+				const label = command.trim();
+				if (label.length === 0) {
+					continue;
+				}
+				let description = '';
+				if (cwd) {
+					description += `cwd: ${cwd} `;
+				}
+				if (exitCode) {
+					// Since you cannot get the last command's exit code on pwsh, just whether it failed
+					// or not, -1 is treated specially as simply failed
+					if (exitCode === -1) {
+						description += 'failed';
+					} else {
+						description += `exitCode: ${exitCode}`;
+					}
+				}
+				items.push({
+					label,
+					description: description.trim(),
+					detail: fromNow(timestamp, true),
+					id: timestamp.toString()
+				});
+			}
+		} else {
+			const cwds = this.xterm.commandTracker.cwds;
+			for (const label of cwds) {
+				items.push({ label });
+			}
+		}
+		const result = await this._quickInputService.pick(items.reverse(), {});
+		if (result) {
+			this.sendText(type === 'cwd' ? `cd ${result.label}` : result.label, true);
+		}
 	}
 
 	detachFromElement(): void {

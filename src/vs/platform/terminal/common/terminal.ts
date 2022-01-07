@@ -370,6 +370,13 @@ export interface IHeartbeatService {
 	readonly onBeat: Event<void>;
 }
 
+export interface TerminalCommand {
+	command: string;
+	timestamp: number;
+	cwd?: string;
+	exitCode?: number;
+}
+
 export interface IShellLaunchConfig {
 	/**
 	 * The name of the terminal, if this is not set the name of the process will be used.
@@ -548,7 +555,8 @@ export interface IProcessReadyEvent {
 }
 
 export const enum ProcessCapability {
-	CwdDetection = 'cwdDetection'
+	CwdDetection = 'cwdDetection',
+	CommandCognisant = 'commandCognisant'
 }
 
 /**
@@ -689,6 +697,11 @@ export interface ITerminalProfile {
 	path: string;
 	isDefault: boolean;
 	isAutoDetected?: boolean;
+	/**
+	 * Whether the profile path was found on the `$PATH` environment variable, if so it will be
+	 * cleaner to display this profile in the UI using only `basename(path)`.
+	 */
+	isFromPath?: boolean;
 	args?: string | string[] | undefined;
 	env?: ITerminalEnvironment;
 	overrideName?: boolean;

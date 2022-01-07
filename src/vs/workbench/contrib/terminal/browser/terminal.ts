@@ -17,7 +17,6 @@ import { DeserializedTerminalEditorInput } from 'vs/workbench/contrib/terminal/b
 import { TerminalEditorInput } from 'vs/workbench/contrib/terminal/browser/terminalEditorInput';
 import { EditorGroupColumn } from 'vs/workbench/services/editor/common/editorGroupColumn';
 import { IKeyMods } from 'vs/platform/quickinput/common/quickInput';
-import { TerminalLinkProviderType } from 'vs/workbench/contrib/terminal/browser/links/terminalLinkManager';
 
 export const ITerminalService = createDecorator<ITerminalService>('terminalService');
 export const ITerminalEditorService = createDecorator<ITerminalEditorService>('terminalEditorService');
@@ -198,7 +197,7 @@ export interface ITerminalService extends ITerminalInstanceHost {
 	toggleDevTools(open?: boolean): Promise<void>;
 	handleNewRegisteredBackend(backend: ITerminalBackend): void;
 }
-export class TerminalLinkQuickpickEvent extends MouseEvent {
+export class TerminalLinkQuickPickEvent extends MouseEvent {
 
 }
 export interface ITerminalServiceNativeDelegate {
@@ -790,8 +789,16 @@ export interface ITerminalInstance {
 
 	/**
 	 * Triggers a quick pick that displays links from the viewport of the active terminal.
+	 * Selecting a file or web link will open it. Selecting a word link will copy it to the
+	 * clipboard.
 	 */
-	showLinkQuickpick(type: TerminalLinkProviderType): Promise<void>;
+	showLinkQuickpick(): Promise<void>;
+
+	/**
+	 * Triggers a quick pick that displays recent commands or cwds. Selecting one will
+	 * re-run it in the active terminal.
+	 */
+	runRecent(type: 'command' | 'cwd'): Promise<void>;
 }
 
 export interface IXtermTerminal {
@@ -838,6 +845,11 @@ export interface IXtermTerminal {
 	 * viewport.
 	 */
 	clearBuffer(): void;
+
+	/*
+	 * When process capabilites are updated, update the command tracker
+	 */
+	upgradeCommandTracker(): void;
 }
 
 export interface IRequestAddInstanceToGroupEvent {
