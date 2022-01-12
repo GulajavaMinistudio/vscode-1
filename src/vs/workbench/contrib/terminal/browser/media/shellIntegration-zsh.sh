@@ -39,7 +39,7 @@
     precmd() {
       local STATUS="$?"
       if [ -z "${IN_COMMAND_EXECUTION-}" ]; then
-        # ctrl c was = to ""
+        # not in command execution
         command_output_start
       fi
 
@@ -57,7 +57,7 @@
       IN_COMMAND_EXECUTION="1"
       command_output_start
     }
-    precmd_functions=($precmd_functions precmd)
-    preexec_functions=($preexec_functions preexec)
+    precmd_functions+=($precmd_functions precmd)
+    preexec_functions+=($preexec_functions preexec)
     update_cwd
     set_shell_integration_enabled
