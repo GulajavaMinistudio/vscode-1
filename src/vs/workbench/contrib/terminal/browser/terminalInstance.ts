@@ -784,9 +784,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 			}
 		}
 		const outputProvider = this._instantiationService.createInstance(TerminalOutputProvider);
-		const result = await this._quickInputService.pick(items.reverse(), {
-			onDidTriggerItemButton: (async e => {
-				const selectedCommand = e.item.command;
+		const quickPick = this._quickInputService.createQuickPick();
+		quickPick.items = items.reverse();
+		return new Promise<void>(r => {
+			quickPick.onDidTriggerItemButton(async e => {
+				const selectedCommand = (e.item as Item).command;
 				const output = selectedCommand?.getOutput();
 				if (output && selectedCommand?.command) {
 					const textContent = await outputProvider.provideTextContent(URI.from(
@@ -797,16 +799,21 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 							query: `terminal-output-${selectedCommand.timestamp}-${this.instanceId}`
 						}));
 					if (textContent) {
-						this._editorService.openEditor({
+						await this._editorService.openEditor({
 							resource: textContent.uri
 						});
 					}
 				}
-			})
+				quickPick.hide();
+			});
+			quickPick.onDidAccept(e => {
+				const result = quickPick.activeItems[0];
+				this.sendText(type === 'cwd' ? `cd ${result.label}` : result.label, true);
+				quickPick.hide();
+			});
+			quickPick.show();
+			quickPick.onDidHide(() => r());
 		});
-		if (result) {
-			this.sendText(type === 'cwd' ? `cd ${result.label}` : result.label, true);
-		}
 	}
 
 	detachFromElement(): void {
@@ -1532,6 +1539,9 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 
 	@debounce(2000)
 	private async _updateProcessCwd(): Promise<string> {
+		if (this._isDisposed) {
+			return this.cwd || this._initialCwd || '';
+		}
 		// reset cwd if it has changed, so file based url paths can be resolved
 		const cwd = await this.refreshProperty(ProcessPropertyType.Cwd);
 		if (typeof cwd !== 'string') {
