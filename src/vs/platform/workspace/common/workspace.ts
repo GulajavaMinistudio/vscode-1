@@ -362,6 +362,16 @@ export class Workspace implements IWorkspace {
 	}
 }
 
+export interface IRawFileWorkspaceFolder {
+	path: string;
+	name?: string;
+}
+
+export interface IRawUriWorkspaceFolder {
+	uri: string;
+	name?: string;
+}
+
 export class WorkspaceFolder implements IWorkspaceFolder {
 
 	readonly uri: URI;
@@ -370,7 +380,7 @@ export class WorkspaceFolder implements IWorkspaceFolder {
 
 	constructor(
 		data: IWorkspaceFolderData,
-		readonly raw?: { path: string; name?: string } | { uri: string; name?: string }
+		readonly raw?: IRawFileWorkspaceFolder | IRawUriWorkspaceFolder
 	) {
 		this.uri = data.uri;
 		this.index = data.index;
