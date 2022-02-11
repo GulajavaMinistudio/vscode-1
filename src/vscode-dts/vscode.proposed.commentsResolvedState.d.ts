@@ -4,11 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 declare module 'vscode' {
-	export interface Comment {
-		/**
-		 * An optional timestamp that will be displayed in comments.
-		 * The date will be formatted according to the user's locale and settings.
-		 */
-		timestamp?: Date;
+
+	// https://github.com/microsoft/vscode/issues/127473
+
+	export enum CommentThreadState {
+		Unresolved = 0,
+		Resolved = 1
+	}
+
+	export interface CommentThread {
+		state?: CommentThreadState;
 	}
 }
