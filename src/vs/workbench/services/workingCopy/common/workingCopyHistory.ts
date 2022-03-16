@@ -42,23 +42,12 @@ export interface IWorkingCopyHistoryEntry {
 	/**
 	 * The time when this history entry was created.
 	 */
-	readonly timestamp: {
-
-		/**
-		 * The raw time value as timestamp.
-		 */
-		readonly value: number;
-
-		/**
-		 * Preferred label for how the time should be displayed.
-		 */
-		readonly label: string;
-	};
+	readonly timestamp: number;
 
 	/**
 	 * Associated source with the history entry.
 	 */
-	readonly source: SaveSource;
+	source: SaveSource;
 }
 
 export interface IWorkingCopyHistoryEntryDescriptor {
@@ -91,15 +80,30 @@ export interface IWorkingCopyHistoryService {
 	onDidAddEntry: Event<IWorkingCopyHistoryEvent>;
 
 	/**
+	 * An event when entries are changed in the history.
+	 */
+	onDidChangeEntry: Event<IWorkingCopyHistoryEvent>;
+
+	/**
 	 * An event when entries are removed from the history.
 	 */
 	onDidRemoveEntry: Event<IWorkingCopyHistoryEvent>;
+
+	/**
+	 * An event when all entries are removed from the history.
+	 */
+	onDidRemoveAllEntries: Event<void>;
 
 	/**
 	 * Adds a new entry to the history for the given working copy
 	 * with an optional associated descriptor.
 	 */
 	addEntry(descriptor: IWorkingCopyHistoryEntryDescriptor, token: CancellationToken): Promise<IWorkingCopyHistoryEntry | undefined>;
+
+	/**
+	 * Updates an entry in the local history if found.
+	 */
+	updateEntry(entry: IWorkingCopyHistoryEntry, properties: { source: SaveSource }, token: CancellationToken): Promise<void>;
 
 	/**
 	 * Removes an entry from the local history if found.
@@ -110,4 +114,14 @@ export interface IWorkingCopyHistoryService {
 	 * Gets all history entries for the provided resource.
 	 */
 	getEntries(resource: URI, token: CancellationToken): Promise<readonly IWorkingCopyHistoryEntry[]>;
+
+	/**
+	 * Returns all resources for which history entries exist.
+	 */
+	getAll(token: CancellationToken): Promise<readonly URI[]>;
+
+	/**
+	 * Removes all entries from all of local history.
+	 */
+	removeAll(token: CancellationToken): Promise<void>;
 }
