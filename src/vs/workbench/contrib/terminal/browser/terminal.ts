@@ -554,6 +554,8 @@ export interface ITerminalInstance {
 	 */
 	onExit: Event<number | ITerminalLaunchError | undefined>;
 
+	onDidChangeFindResults: Event<{ resultIndex: number; resultCount: number } | undefined>;
+
 	readonly exitCode: number | undefined;
 
 	readonly areLinksReady: boolean;
@@ -864,6 +866,8 @@ export interface IXtermTerminal {
 	 */
 	target?: TerminalLocation;
 
+	findResult?: { resultIndex: number; resultCount: number };
+
 	/**
 	 * Find the next instance of the term
 	*/
@@ -917,4 +921,8 @@ export const enum LinuxDistro {
 	Unknown = 1,
 	Fedora = 2,
 	Ubuntu = 3,
+}
+
+export const enum TerminalDataTransfers {
+	Terminals = 'Terminals'
 }
