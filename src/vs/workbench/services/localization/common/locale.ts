@@ -3,16 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-//@ts-check
+import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 
-'use strict';
+export const ILocaleService = createDecorator<ILocaleService>('localizationService');
 
-const withDefaults = require('../shared.webpack.config');
-
-module.exports = withDefaults({
-	context: __dirname,
-	entry: {
-		main: './src/main.ts',
-		['askpass-main']: './src/askpass-main.ts'
-	}
-});
+export interface ILocaleService {
+	readonly _serviceBrand: undefined;
+	setLocale(languagePackItem: string | undefined): Promise<boolean>;
+}
