@@ -647,17 +647,6 @@ export class NotebookEdit implements vscode.NotebookEdit {
 	}
 }
 
-export class SnippetTextEdit implements vscode.SnippetTextEdit {
-
-	range: vscode.Range;
-	snippet: vscode.SnippetString;
-
-	constructor(range: Range, snippet: SnippetString) {
-		this.range = range;
-		this.snippet = snippet;
-	}
-}
-
 export interface IFileOperationOptions {
 	overwrite?: boolean;
 	ignoreIfExists?: boolean;
@@ -2484,9 +2473,9 @@ export class DataTransfer {
 		this.#items.set(mimeType, [value]);
 	}
 
-	forEach(callbackfn: (value: DataTransferItem, key: string) => void): void {
+	forEach(callbackfn: (value: DataTransferItem, key: string) => void, thisArg?: unknown): void {
 		for (const [mime, items] of this.#items) {
-			items.forEach(item => callbackfn(item, mime));
+			items.forEach(item => callbackfn(item, mime), thisArg);
 		}
 	}
 }
