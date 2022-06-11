@@ -73,9 +73,13 @@ export function create(
 	}
 
 	// FULL COMPILE stream doing transpile, syntax and semantic diagnostics
+
+	let _builder!: builder.ITypeScriptBuilder;
 	function createCompileStream(token?: builder.CancellationToken): Readable & Writable {
 
-		const _builder = builder.createTypeScriptBuilder({ logFn }, projectPath, cmdLine);
+		if (!_builder) {
+			_builder = builder.createTypeScriptBuilder({ logFn }, projectPath, cmdLine);
+		}
 
 		return through(function (this: through.ThroughStream, file: Vinyl) {
 			// give the file to the compiler
@@ -139,7 +143,7 @@ export function create(
 
 	result.src = (opts?: { cwd?: string; base?: string }) => {
 		let _pos = 0;
-		let _fileNames = cmdLine.fileNames.slice(0);
+		const _fileNames = cmdLine.fileNames.slice(0);
 		return new class extends Readable {
 			constructor() {
 				super({ objectMode: true });
