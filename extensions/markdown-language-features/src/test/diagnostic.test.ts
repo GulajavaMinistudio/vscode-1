@@ -7,7 +7,7 @@ import * as assert from 'assert';
 import 'mocha';
 import * as vscode from 'vscode';
 import { DiagnosticComputer, DiagnosticConfiguration, DiagnosticLevel, DiagnosticManager, DiagnosticOptions } from '../languageFeatures/diagnostics';
-import { MdLinkProvider } from '../languageFeatures/documentLinkProvider';
+import { MdLinkComputer } from '../languageFeatures/documentLinkProvider';
 import { noopToken } from '../util/cancellation';
 import { InMemoryDocument } from '../util/inMemoryDocument';
 import { MdWorkspaceContents } from '../workspaceContents';
@@ -18,8 +18,8 @@ import { assertRangeEqual, joinLines, workspacePath } from './util';
 
 async function getComputedDiagnostics(doc: InMemoryDocument, workspaceContents: MdWorkspaceContents): Promise<vscode.Diagnostic[]> {
 	const engine = createNewMarkdownEngine();
-	const linkProvider = new MdLinkProvider(engine);
-	const computer = new DiagnosticComputer(engine, workspaceContents, linkProvider);
+	const linkComputer = new MdLinkComputer(engine);
+	const computer = new DiagnosticComputer(engine, workspaceContents, linkComputer);
 	return (
 		await computer.getDiagnostics(doc, {
 			enabled: true,
@@ -34,8 +34,8 @@ async function getComputedDiagnostics(doc: InMemoryDocument, workspaceContents: 
 
 function createDiagnosticsManager(workspaceContents: MdWorkspaceContents, configuration = new MemoryDiagnosticConfiguration({})) {
 	const engine = createNewMarkdownEngine();
-	const linkProvider = new MdLinkProvider(engine);
-	return new DiagnosticManager(new DiagnosticComputer(engine, workspaceContents, linkProvider), configuration);
+	const linkComputer = new MdLinkComputer(engine);
+	return new DiagnosticManager(new DiagnosticComputer(engine, workspaceContents, linkComputer), configuration);
 }
 
 function assertDiagnosticsEqual(actual: readonly vscode.Diagnostic[], expectedRanges: readonly vscode.Range[]) {
@@ -131,7 +131,7 @@ suite('markdown: Diagnostics', () => {
 
 		const diagnostics = await getComputedDiagnostics(doc1, new InMemoryWorkspaceMarkdownDocuments([doc1, doc2]));
 		assertDiagnosticsEqual(diagnostics, [
-			new vscode.Range(5, 6, 5, 35),
+			new vscode.Range(5, 14, 5, 35),
 		]);
 	});
 
@@ -236,7 +236,9 @@ suite('markdown: Diagnostics', () => {
 			// But we should be able to override the default
 			const manager = createDiagnosticsManager(contents, new MemoryDiagnosticConfiguration({ validateFragmentLinks: DiagnosticLevel.ignore, validateMarkdownFileLinkFragments: DiagnosticLevel.warning }));
 			const { diagnostics } = await manager.recomputeDiagnosticState(doc1, noopToken);
-			assert.deepStrictEqual(diagnostics.length, 1);
+			assertDiagnosticsEqual(diagnostics, [
+				new vscode.Range(1, 13, 1, 21),
+			]);
 		}
 	});
 
