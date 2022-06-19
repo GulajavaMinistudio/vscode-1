@@ -7,9 +7,9 @@ import * as assert from 'assert';
 import 'mocha';
 import * as vscode from 'vscode';
 import { DiagnosticCollectionReporter, DiagnosticComputer, DiagnosticConfiguration, DiagnosticLevel, DiagnosticManager, DiagnosticOptions, DiagnosticReporter } from '../languageFeatures/diagnostics';
-import { MdLinkComputer } from '../languageFeatures/documentLinkProvider';
-import { MdReferencesComputer } from '../languageFeatures/references';
-import { githubSlugifier } from '../slugify';
+import { MdLinkProvider } from '../languageFeatures/documentLinkProvider';
+import { MdReferencesProvider } from '../languageFeatures/references';
+import { MdTableOfContentsProvider } from '../tableOfContents';
 import { noopToken } from '../util/cancellation';
 import { disposeAll } from '../util/dispose';
 import { InMemoryDocument } from '../util/inMemoryDocument';
@@ -28,10 +28,11 @@ const defaultDiagnosticsOptions = Object.freeze<DiagnosticOptions>({
 	ignoreLinks: [],
 });
 
-async function getComputedDiagnostics(doc: InMemoryDocument, workspaceContents: MdWorkspaceContents, options: Partial<DiagnosticOptions> = {}): Promise<vscode.Diagnostic[]> {
+async function getComputedDiagnostics(doc: InMemoryDocument, workspace: MdWorkspaceContents, options: Partial<DiagnosticOptions> = {}): Promise<vscode.Diagnostic[]> {
 	const engine = createNewMarkdownEngine();
-	const linkComputer = new MdLinkComputer(engine);
-	const computer = new DiagnosticComputer(engine, workspaceContents, linkComputer);
+	const linkProvider = new MdLinkProvider(engine, workspace);
+	const tocProvider = new MdTableOfContentsProvider(engine, workspace);
+	const computer = new DiagnosticComputer(workspace, linkProvider, tocProvider);
 	return (
 		await computer.getDiagnostics(doc, { ...defaultDiagnosticsOptions, ...options, }, noopToken)
 	).diagnostics;
@@ -430,17 +431,18 @@ suite('Markdown: Diagnostics manager', () => {
 		reporter: DiagnosticReporter = new DiagnosticCollectionReporter(),
 	) {
 		const engine = createNewMarkdownEngine();
-		const linkComputer = new MdLinkComputer(engine);
-		const referencesComputer = new MdReferencesComputer(linkComputer, workspace, engine, githubSlugifier);
+		const linkProvider = new MdLinkProvider(engine, workspace);
+		const tocProvider = new MdTableOfContentsProvider(engine, workspace);
+		const referencesProvider = new MdReferencesProvider(engine, workspace, tocProvider);
 		const manager = new DiagnosticManager(
 			engine,
 			workspace,
-			new DiagnosticComputer(engine, workspace, linkComputer),
+			new DiagnosticComputer(workspace, linkProvider, tocProvider),
 			configuration,
 			reporter,
-			referencesComputer,
+			referencesProvider,
 			0);
-		_disposables.push(manager, referencesComputer);
+		_disposables.push(manager, referencesProvider);
 		return manager;
 	}
 
