@@ -119,10 +119,15 @@ export class InputCodeEditorView extends CodeEditorView {
 							id: idx.toString(),
 							range: baseRange.getInputRange(this.inputNumber),
 							enabled: model.isUpToDate,
-							toggleState: derivedObservable('toggle', (reader) => model
-								.getState(baseRange)
-								.read(reader)
-								.getInput(this.inputNumber)
+							toggleState: derivedObservable('toggle', (reader) => {
+								const input = model
+									.getState(baseRange)
+									.read(reader)
+									.getInput(this.inputNumber);
+								return input === InputState.second && !baseRange.isOrderRelevant
+									? InputState.first
+									: input;
+							}
 							),
 							setState: (value, tx) => viewModel.setState(
 								baseRange,
@@ -152,29 +157,32 @@ export class InputCodeEditorView extends CodeEditorView {
 								return [
 									baseRange.input1Diffs.length > 0
 										? action(
-											'mergeEditor.takeInput1',
-											localize('mergeEditor.takeInput1', 'Take Input 1'),
+											'mergeEditor.acceptInput1',
+											localize('mergeEditor.accept', 'Accept {0}', model.input1Title),
 											state.toggle(1),
 											state.input1
 										)
 										: undefined,
 									baseRange.input2Diffs.length > 0
 										? action(
-											'mergeEditor.takeInput2',
-											localize('mergeEditor.takeInput2', 'Take Input 2'),
+											'mergeEditor.acceptInput2',
+											localize('mergeEditor.accept', 'Accept {0}', model.input2Title),
 											state.toggle(2),
 											state.input2
 										)
 										: undefined,
 									baseRange.isConflicting
-										? action(
-											'mergeEditor.takeBothSides',
-											localize(
-												'mergeEditor.takeBothSides',
-												'Take Both Sides'
+										? setFields(
+											action(
+												'mergeEditor.acceptBoth',
+												localize(
+													'mergeEditor.acceptBoth',
+													'Accept Both'
+												),
+												state.withInput1(!both).withInput2(!both),
+												both
 											),
-											state.withInput1(!both).withInput2(!both),
-											both
+											{ enabled: baseRange.canBeCombined }
 										)
 										: undefined,
 									baseRange.isConflicting
@@ -185,7 +193,7 @@ export class InputCodeEditorView extends CodeEditorView {
 												state.swap(),
 												false
 											),
-											{ enabled: !state.isEmpty }
+											{ enabled: !state.isEmpty && (!both || baseRange.isOrderRelevant) }
 										)
 										: undefined,
 
@@ -238,7 +246,7 @@ export class MergeConflictGutterItemView extends Disposable implements IGutterIt
 
 		target.classList.add('merge-accept-gutter-marker');
 
-		const checkBox = new Toggle({ isChecked: false, title: localize('acceptMerge', "Accept Merge"), icon: Codicon.check });
+		const checkBox = new Toggle({ isChecked: false, title: localize('accept', "Accept"), icon: Codicon.check });
 		this._register(
 			dom.addDisposableListener(checkBox.domNode, dom.EventType.MOUSE_DOWN, (e) => {
 				if (e.button === 2) {
