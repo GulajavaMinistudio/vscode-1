@@ -19,9 +19,7 @@ import { withNullAsUndefined } from 'vs/base/common/types';
 import { URI } from 'vs/base/common/uri';
 
 export function clearNode(node: HTMLElement): void {
-	while (node.firstChild) {
-		node.firstChild.remove();
-	}
+	node.replaceChildren();
 }
 
 /**
@@ -363,16 +361,8 @@ class SizeUtils {
 	}
 
 	private static getDimension(element: HTMLElement, cssPropertyName: string, jsPropertyName: string): number {
-		const computedStyle: CSSStyleDeclaration = getComputedStyle(element);
-		let value = '0';
-		if (computedStyle) {
-			if (computedStyle.getPropertyValue) {
-				value = computedStyle.getPropertyValue(cssPropertyName);
-			} else {
-				// IE8
-				value = (<any>computedStyle).getAttribute(jsPropertyName);
-			}
-		}
+		const computedStyle = getComputedStyle(element);
+		const value = computedStyle ? computedStyle.getPropertyValue(cssPropertyName) : '0';
 		return SizeUtils.convertToPixels(element, value);
 	}
 
@@ -541,8 +531,8 @@ export function position(element: HTMLElement, top: number, right?: number, bott
 export function getDomNodePagePosition(domNode: HTMLElement): IDomNodePagePosition {
 	const bb = domNode.getBoundingClientRect();
 	return {
-		left: bb.left + StandardWindow.scrollX,
-		top: bb.top + StandardWindow.scrollY,
+		left: bb.left + window.scrollX,
+		top: bb.top + window.scrollY,
 		width: bb.width,
 		height: bb.height
 	};
@@ -566,30 +556,6 @@ export function getDomNodeZoomLevel(domNode: HTMLElement): number {
 	return zoom;
 }
 
-export interface IStandardWindow {
-	readonly scrollX: number;
-	readonly scrollY: number;
-}
-
-export const StandardWindow: IStandardWindow = new class implements IStandardWindow {
-	get scrollX(): number {
-		if (typeof window.scrollX === 'number') {
-			// modern browsers
-			return window.scrollX;
-		} else {
-			return document.body.scrollLeft + document.documentElement!.scrollLeft;
-		}
-	}
-
-	get scrollY(): number {
-		if (typeof window.scrollY === 'number') {
-			// modern browsers
-			return window.scrollY;
-		} else {
-			return document.body.scrollTop + document.documentElement!.scrollTop;
-		}
-	}
-};
 
 // Adapted from WinJS
 // Gets the width of the element, including margins.
@@ -893,20 +859,9 @@ export interface EventLike {
 
 export const EventHelper = {
 	stop: function (e: EventLike, cancelBubble?: boolean) {
-		if (e.preventDefault) {
-			e.preventDefault();
-		} else {
-			// IE8
-			(<any>e).returnValue = false;
-		}
-
+		e.preventDefault();
 		if (cancelBubble) {
-			if (e.stopPropagation) {
-				e.stopPropagation();
-			} else {
-				// IE8
-				(<any>e).cancelBubble = true;
-			}
+			e.stopPropagation();
 		}
 	}
 };
@@ -1153,10 +1108,6 @@ export function removeTabIndexAndUpdateFocus(node: HTMLElement): void {
 	}
 
 	node.removeAttribute('tabindex');
-}
-
-export function getElementsByTagName(tag: string): HTMLElement[] {
-	return Array.prototype.slice.call(document.getElementsByTagName(tag), 0);
 }
 
 export function finalHandler<T extends Event>(fn: (event: T) => any): (event: T) => any {
