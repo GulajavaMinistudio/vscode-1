@@ -131,6 +131,7 @@ export class EditSessionsContribution extends Disposable implements IWorkbenchCo
 		this._register(this.fileService.registerProvider(EditSessionsFileSystemProvider.SCHEMA, new EditSessionsFileSystemProvider(this.editSessionsStorageService)));
 		this.lifecycleService.onWillShutdown((e) => e.join(this.autoStoreEditSession(), { id: 'autoStoreEditSession', label: localize('autoStoreEditSession', 'Storing current edit session...') }));
 		this._register(this.editSessionsStorageService.onDidSignIn(() => this.updateAccountsMenuBadge()));
+		this._register(this.editSessionsStorageService.onDidSignOut(() => this.updateAccountsMenuBadge()));
 	}
 
 	private autoResumeEditSession() {
@@ -377,6 +378,10 @@ export class EditSessionsContribution extends Disposable implements IWorkbenchCo
 
 		this.logService.info(ref !== undefined ? `Resuming edit session with ref ${ref}...` : 'Resuming edit session...');
 
+		if (silent && !(await this.editSessionsStorageService.initialize(false, true))) {
+			return;
+		}
+
 		const data = await this.editSessionsStorageService.read(ref);
 		if (!data) {
 			if (ref === undefined && !silent) {
@@ -397,6 +402,9 @@ export class EditSessionsContribution extends Disposable implements IWorkbenchCo
 
 		try {
 			const { changes, conflictingChanges } = await this.generateChanges(editSession, ref);
+			if (changes.length === 0) {
+				return;
+			}
 
 			// TODO@joyceerhl Provide the option to diff files which would be overwritten by edit session contents
 			if (conflictingChanges.length > 0) {
@@ -406,13 +414,12 @@ export class EditSessionsContribution extends Disposable implements IWorkbenchCo
 
 				const result = await this.dialogService.show(
 					Severity.Warning,
-					changes.length > 1 ?
-						localize('resume edit session warning many', 'Resuming your edit session will overwrite the following {0} files. Do you want to proceed?', changes.length) :
-						localize('resume edit session warning 1', 'Resuming your edit session will overwrite {0}. Do you want to proceed?', basename(changes[0].uri)),
+					conflictingChanges.length > 1 ?
+						localize('resume edit session warning many', 'Resuming your edit session will overwrite the following {0} files. Do you want to proceed?', conflictingChanges.length) :
+						localize('resume edit session warning 1', 'Resuming your edit session will overwrite {0}. Do you want to proceed?', basename(conflictingChanges[0].uri)),
 					[cancel, yes],
 					{
-						custom: true,
-						detail: changes.length > 1 ? getFileNamesMessage(conflictingChanges.map((c) => c.uri)) : undefined,
+						detail: conflictingChanges.length > 1 ? getFileNamesMessage(conflictingChanges.map((c) => c.uri)) : undefined,
 						cancelId: 0
 					});
 
@@ -793,7 +800,7 @@ const continueEditSessionExtPoint = ExtensionsRegistry.registerExtensionPoint<IC
 //#endregion
 
 const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
-workbenchRegistry.registerWorkbenchContribution(EditSessionsContribution, 'EditSessionsContribution', LifecyclePhase.Restored);
+workbenchRegistry.registerWorkbenchContribution(EditSessionsContribution, LifecyclePhase.Restored);
 
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
 	...workbenchConfigurationNodeBase,
