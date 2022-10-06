@@ -46,7 +46,7 @@ import { IEditorService } from 'vs/workbench/services/editor/common/editorServic
 import { MultiCommand } from 'vs/editor/browser/editorExtensions';
 import { IWebview } from 'vs/workbench/contrib/webview/browser/webview';
 import { ExtensionsWorkbenchService } from 'vs/workbench/contrib/extensions/browser/extensionsWorkbenchService';
-import { CATEGORIES } from 'vs/workbench/common/actions';
+import { Categories } from 'vs/platform/action/common/actionCommonCategories';
 import { IExtensionRecommendationNotificationService } from 'vs/platform/extensionRecommendations/common/extensionRecommendations';
 import { ExtensionRecommendationNotificationService } from 'vs/workbench/contrib/extensions/browser/extensionRecommendationNotificationService';
 import { IExtensionService, toExtensionDescription } from 'vs/workbench/services/extensions/common/extensions';
@@ -81,7 +81,7 @@ import { IStringDictionary } from 'vs/base/common/collections';
 
 // Singletons
 registerSingleton(IExtensionsWorkbenchService, ExtensionsWorkbenchService, InstantiationType.Eager /* Auto updates extensions */);
-registerSingleton(IExtensionRecommendationNotificationService, ExtensionRecommendationNotificationService, true);
+registerSingleton(IExtensionRecommendationNotificationService, ExtensionRecommendationNotificationService, InstantiationType.Delayed);
 registerSingleton(IExtensionRecommendationsService, ExtensionRecommendationsService, InstantiationType.Eager /* Prompts recommendations in the background */);
 
 Registry.as<IOutputChannelRegistry>(OutputExtensions.OutputChannels)
@@ -838,7 +838,7 @@ class ExtensionsContributions extends Disposable implements IWorkbenchContributi
 		this.registerExtensionAction({
 			id: 'workbench.extensions.action.installWebExtensionFromLocation',
 			title: { value: localize('installWebExtensionFromLocation', "Install Web Extension..."), original: 'Install Web Extension...' },
-			category: CATEGORIES.Developer,
+			category: Categories.Developer,
 			menu: [{
 				id: MenuId.CommandPalette,
 				when: ContextKeyExpr.or(CONTEXT_HAS_WEB_SERVER)
@@ -1190,7 +1190,7 @@ class ExtensionsContributions extends Disposable implements IWorkbenchContributi
 		this.registerExtensionAction({
 			id: ReinstallAction.ID,
 			title: { value: ReinstallAction.LABEL, original: 'Reinstall Extension...' },
-			category: CATEGORIES.Developer,
+			category: Categories.Developer,
 			menu: {
 				id: MenuId.CommandPalette,
 				when: ContextKeyExpr.and(CONTEXT_HAS_GALLERY, ContextKeyExpr.or(CONTEXT_HAS_LOCAL_SERVER, CONTEXT_HAS_REMOTE_SERVER))
