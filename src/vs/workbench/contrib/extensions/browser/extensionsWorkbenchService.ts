@@ -1024,7 +1024,14 @@ export class ExtensionsWorkbenchService extends Disposable implements IExtension
 		return null;
 	}
 
-	async open(extension: IExtension, options?: IExtensionEditorOptions): Promise<void> {
+	async open(extension: IExtension | string, options?: IExtensionEditorOptions): Promise<void> {
+		if (typeof extension === 'string') {
+			const id = extension;
+			extension = this.installed.find(e => areSameExtensions(e.identifier, { id })) ?? (await this.getExtensions([{ id: extension }], CancellationToken.None))[0];
+		}
+		if (!extension) {
+			throw new Error(`Extension not found. ${extension}`);
+		}
 		const editor = await this.editorService.openEditor(this.instantiationService.createInstance(ExtensionsInput, extension), options, options?.sideByside ? SIDE_GROUP : ACTIVE_GROUP);
 		if (options?.tab && editor instanceof ExtensionEditor) {
 			await editor.openTab(options.tab);
@@ -1566,11 +1573,12 @@ export class ExtensionsWorkbenchService extends Disposable implements IExtension
 					this._onChange.fire(extension);
 				}
 				const local = await installTask();
-				return this.waitAndGetInstalledExtension(local.identifier);
+				return await this.waitAndGetInstalledExtension(local.identifier);
 			} finally {
 				if (!(extension instanceof URI)) {
 					this.installing = this.installing.filter(e => e !== extension);
-					this._onChange.fire(extension);
+					// Trigger the change without passing the extension because it is replaced by a new instance.
+					this._onChange.fire(undefined);
 				}
 			}
 		});
