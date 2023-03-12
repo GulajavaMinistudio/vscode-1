@@ -26,6 +26,8 @@ import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle
 import '../common/interactiveSessionColors';
 import { IInteractiveSessionWidgetService, InteractiveSessionWidgetService } from 'vs/workbench/contrib/interactiveSession/browser/interactiveSessionWidget';
 import { registerInteractiveSessionCopyActions } from 'vs/workbench/contrib/interactiveSession/browser/actions/interactiveSessionCopyActions';
+import { registerInteractiveSessionCodeBlockActions } from 'vs/workbench/contrib/interactiveSession/browser/actions/interactiveSessionCodeblockActions';
+import { registerInteractiveSessionTitleActions } from 'vs/workbench/contrib/interactiveSession/browser/actions/interactiveSessionTitleActions';
 
 
 // Register configuration
@@ -102,7 +104,11 @@ workbenchContributionsRegistry.registerWorkbenchContribution(InteractiveSessionR
 
 registerInteractiveSessionActions();
 registerInteractiveSessionCopyActions();
+registerInteractiveSessionCodeBlockActions();
+registerInteractiveSessionTitleActions();
 
 registerSingleton(IInteractiveSessionService, InteractiveSessionService, InstantiationType.Delayed);
 registerSingleton(IInteractiveSessionContributionService, InteractiveSessionContributionService, InstantiationType.Delayed);
 registerSingleton(IInteractiveSessionWidgetService, InteractiveSessionWidgetService, InstantiationType.Delayed);
+
+import 'vs/workbench/contrib/interactiveSession/browser/contrib/interactiveSessionInputEditorDecorations';
