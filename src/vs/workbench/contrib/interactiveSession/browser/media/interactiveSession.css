@@ -17,6 +17,7 @@
 }
 
 .interactive-list .interactive-item-container {
+	padding: 16px 20px 0px 20px;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
@@ -57,7 +58,7 @@
 }
 
 .interactive-list .interactive-item-container .header .avatar .codicon {
-	color: var(--vscode-badge-foreground);
+	color: var(--vscode-badge-foreground) !important;
 }
 
 .interactive-list .interactive-item-container .header .monaco-toolbar {
@@ -98,15 +99,20 @@
 
 .interactive-list .monaco-list-row .interactive-response {
 	background-color: var(--vscode-interactive-responseBackground);
-	padding: 16px 20px 0 20px
-}
-
-.interactive-list .monaco-list-row .interactive-request {
-	padding: 16px 20px 0 20px;
 }
 
 .interactive-list .monaco-list-row .value {
 	white-space: normal;
+}
+
+.interactive-list .monaco-list-row .value > :last-child:not(.rendered-markdown) {
+	/* The container has padding on all sides except the bottom. The last element needs to provide this margin. rendered-markdown has its own margin.
+		TODO Another approach could be removing the margin on the very last element inside the markdown container? */
+	margin-bottom: 16px;
+}
+
+.interactive-list .monaco-list-row .value > .interactive-response-error-details:not(:last-child) {
+	margin-bottom: 8px;
 }
 
 .interactive-list .monaco-list-row .value p {
@@ -204,7 +210,7 @@
 }
 
 .interactive-session .interactive-response .interactive-response-error-details .codicon {
-	color: var(--vscode-errorForeground);
+	color: var(--vscode-errorForeground) !important; /* Have to override default styles which apply to all lists */
 }
 
 .interactive-session .interactive-request .value .interactive-slash-command {
@@ -224,17 +230,8 @@
 	align-items: start;
 }
 
-.interactive-session .interactive-response .interactive-response-followups .interactive-session-followups {
-	margin-bottom: 1em;
-	/* This is matching the margin on rendered markdown */
-}
-
 .interactive-session .interactive-session-followups .monaco-button {
 	width: initial;
-	padding: 0px;
-	font-size: 11px;
-	font-weight: 600;
-	border: none;
 
 	color: var(--vscode-textLink-foreground);
 	justify-content: left;
@@ -245,10 +242,26 @@
 	margin-left: 0;
 }
 
+.interactive-session .interactive-response-followups .monaco-button {
+	padding: 4px 8px;
+}
+
 .interactive-session .interactive-input-part .interactive-input-followups {
 	padding: 0px 20px;
 }
 
 .interactive-session .interactive-input-part .interactive-input-followups .interactive-session-followups {
 	margin-bottom: 8px;
+}
+
+.interactive-session .interactive-input-part .interactive-input-followups .interactive-session-followups .monaco-button {
+	padding: 0px;
+	font-size: 11px;
+	font-weight: 600;
+	border: none;
+}
+
+.interactive-list .interactive-item-container .monaco-toolbar .codicon {
+	/* Very aggressive list styles try to apply focus colors to every codicon in a list row. */
+	color: var(--vscode-foreground) !important;
 }
