@@ -6,6 +6,7 @@
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { groupBy } from 'vs/base/common/collections';
 import { Emitter, Event } from 'vs/base/common/event';
+import { MarkdownString } from 'vs/base/common/htmlContent';
 import { Iterable } from 'vs/base/common/iterator';
 import { Disposable, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { withNullAsUndefined } from 'vs/base/common/types';
@@ -14,8 +15,10 @@ import { IInstantiationService } from 'vs/platform/instantiation/common/instanti
 import { ILogService } from 'vs/platform/log/common/log';
 import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { ISerializableInteractiveSessionData, ISerializableInteractiveSessionsData, InteractiveSessionModel } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionModel';
-import { IInteractiveProgress, IInteractiveProvider, IInteractiveSessionService, IInteractiveSessionUserActionEvent, IInteractiveSlashCommand } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionService';
+import { IViewsService } from 'vs/workbench/common/views';
+import { IInteractiveSessionContributionService } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionContributionService';
+import { ISerializableInteractiveSessionData, ISerializableInteractiveSessionsData, InteractiveSessionModel, InteractiveWelcomeMessageModel } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionModel';
+import { IInteractiveProgress, IInteractiveProvider, IInteractiveSessionDynamicRequest, IInteractiveSessionReplyFollowup, IInteractiveSessionService, IInteractiveSessionUserActionEvent, IInteractiveSlashCommand } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionService';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 
 const serializedInteractiveSessionKey = 'interactive.sessions';
@@ -53,6 +56,8 @@ export class InteractiveSessionService extends Disposable implements IInteractiv
 		@IExtensionService private readonly extensionService: IExtensionService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
+		@IViewsService private readonly viewsService: IViewsService,
+		@IInteractiveSessionContributionService private readonly interactiveSessionContributionService: IInteractiveSessionContributionService,
 	) {
 		super();
 		const sessionData = storageService.get(serializedInteractiveSessionKey, StorageScope.WORKSPACE, '');
@@ -66,7 +71,9 @@ export class InteractiveSessionService extends Disposable implements IInteractiv
 		}
 
 		this._register(storageService.onWillSaveState(e => {
-			const serialized = JSON.stringify(Array.from(this._sessionModels.values()));
+			const allSessions = Array.from(this._sessionModels.values())
+				.filter(session => session.getRequests().length > 0);
+			const serialized = JSON.stringify(allSessions);
 			this.trace('onWillSaveState', `Persisting ${this._sessionModels.size} sessions`);
 			storageService.store(serializedInteractiveSessionKey, serialized, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		}));
@@ -125,15 +132,20 @@ export class InteractiveSessionService extends Disposable implements IInteractiv
 		}
 
 		this.trace('startSession', `Provider returned session with id ${session.id}`);
-		const model = this.instantiationService.createInstance(InteractiveSessionModel, session, providerId, someSessionHistory);
+
+		const welcomeMessage = someSessionHistory ? undefined : await provider.provideWelcomeMessage?.(token);
+		const welcomeModel = welcomeMessage && new InteractiveWelcomeMessageModel(
+			welcomeMessage.map(item => typeof item === 'string' ? new MarkdownString(item) : item as IInteractiveSessionReplyFollowup[]), session.responderUsername, session.responderAvatarIconUri);
+		const model = this.instantiationService.createInstance(InteractiveSessionModel, session, providerId, withNullAsUndefined(welcomeModel), someSessionHistory);
 		this._sessionModels.set(model.sessionId, model);
 
 		return model;
 	}
 
-	sendRequest(sessionId: number, message: string, token: CancellationToken): boolean {
-		this.trace('sendRequest', `sessionId: ${sessionId}, message: ${message.substring(0, 20)}${message.length > 20 ? '[...]' : ''}}`);
-		if (!message.trim()) {
+	sendRequest(sessionId: number, request: string | IInteractiveSessionReplyFollowup, token: CancellationToken): boolean {
+		const messageText = typeof request === 'string' ? request : request.message;
+		this.trace('sendRequest', `sessionId: ${sessionId}, message: ${messageText.substring(0, 20)}${messageText.length > 20 ? '[...]' : ''}}`);
+		if (!messageText.trim()) {
 			this.trace('sendRequest', 'Rejected empty message');
 			return false;
 		}
@@ -154,11 +166,11 @@ export class InteractiveSessionService extends Disposable implements IInteractiv
 		}
 
 		// Return immediately that the request was accepted, don't wait
-		this._sendRequestAsync(model, provider, message, token);
+		this._sendRequestAsync(model, provider, request, token);
 		return true;
 	}
 
-	private async _sendRequestAsync(model: InteractiveSessionModel, provider: IInteractiveProvider, message: string, token: CancellationToken): Promise<void> {
+	private async _sendRequestAsync(model: InteractiveSessionModel, provider: IInteractiveProvider, message: string | IInteractiveSessionReplyFollowup, token: CancellationToken): Promise<void> {
 		try {
 			this._pendingRequestSessions.add(model.sessionId);
 			const request = model.addRequest(message);
@@ -173,7 +185,7 @@ export class InteractiveSessionService extends Disposable implements IInteractiv
 
 				model.acceptResponseProgress(request, progress);
 			};
-			let rawResponse = await provider.provideReply({ session: model.session, message }, progressCallback, token);
+			let rawResponse = await provider.provideReply({ session: model.session, message: request.message }, progressCallback, token);
 			if (!rawResponse) {
 				this.trace('sendRequest', `Provider returned no response for session ${model.sessionId}`);
 				rawResponse = { session: model.session, errorDetails: { message: localize('emptyResponse', "Provider returned null response") } };
@@ -251,6 +263,22 @@ export class InteractiveSessionService extends Disposable implements IInteractiv
 		// Maybe this API should queue a request after the current one?
 		this.trace('addInteractiveRequest', `Sending resolved request for session ${model.sessionId}`);
 		this.sendRequest(model.sessionId, request.message, CancellationToken.None);
+	}
+
+	async sendInteractiveRequestToProvider(providerId: string, message: IInteractiveSessionDynamicRequest): Promise<void> {
+		this.trace('sendInteractiveRequestToProvider', `providerId: ${providerId}`);
+		const viewId = this.interactiveSessionContributionService.getViewIdForProvider(providerId);
+		const view = await this.viewsService.openView(viewId);
+		if (view) {
+			// TODO The ViewPane type is in /browser/, do this somewhere else
+			if ((view as any).acceptInput) {
+				this.trace('sendInteractiveRequestToProvider', `Sending request to view ${viewId}`);
+				(view as any).acceptInput(message.message); // TODO extend the request type to take metadata? Or call a resolve() method? Or something else.
+				return;
+			}
+		}
+
+		this.trace('sendInteractiveRequestToProvider', `Something went wrong, couldn't send request to view ${viewId}`);
 	}
 
 	clearSession(sessionId: number): void {

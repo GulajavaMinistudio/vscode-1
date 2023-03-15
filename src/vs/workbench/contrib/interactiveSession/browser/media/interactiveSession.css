@@ -125,31 +125,36 @@
 	font-family: var(--monaco-monospace-font);
 }
 
-.interactive-session .interactive-input-wrapper {
+.interactive-session .interactive-input-and-toolbar {
 	display: flex;
-	border-radius: 2px;
 	box-sizing: border-box;
 	cursor: text;
-	padding: 0px 12px;
-}
+	margin: 0px 12px;
 
-.interactive-session .interactive-input-wrapper .monaco-editor-background {
 	background-color: var(--vscode-input-background);
-	padding: 0 8px;
-}
-
-/* TODO @daviddossett only apply focus border on focus */
-.interactive-session .interactive-input-wrapper .monaco-editor {
-	border: 1px solid var(--vscode-focusBorder);
-}
-
-.interactive-session .interactive-input-wrapper .monaco-editor,
-.interactive-session .interactive-input-wrapper .monaco-editor .overflow-guard {
+	border: 1px solid var(--vscode-input-border);
 	border-radius: 4px;
+	position: relative;
+	padding-left: 8px;
 }
 
-.interactive-session .interactive-input-wrapper .monaco-editor .cursors-layer {
+.interactive-session .interactive-input-and-toolbar.focused {
+	border-color: var(--vscode-focusBorder);
+}
+
+.interactive-session .interactive-input-and-toolbar .monaco-editor .cursors-layer {
 	padding-left: 4px;
+}
+
+.interactive-session .interactive-input-part .interactive-execute-toolbar {
+	position: absolute;
+	right: 1px;
+}
+
+.interactive-session .interactive-input-part .interactive-execute-toolbar .codicon {
+	font-size: 20px;
+	height: 20px;
+	width: 20px;
 }
 
 .interactive-session .monaco-inputbox {
@@ -213,7 +218,7 @@
 	color: var(--vscode-errorForeground) !important; /* Have to override default styles which apply to all lists */
 }
 
-.interactive-session .interactive-request .value .interactive-slash-command {
+.interactive-session .interactive-item-container .value .interactive-slash-command {
 	color: var(--vscode-textLink-foreground);
 }
 
@@ -247,18 +252,22 @@
 }
 
 .interactive-session .interactive-input-part .interactive-input-followups {
-	padding: 0px 20px;
+	margin: 0px 20px;
 }
 
 .interactive-session .interactive-input-part .interactive-input-followups .interactive-session-followups {
 	margin-bottom: 8px;
 }
 
-.interactive-session .interactive-input-part .interactive-input-followups .interactive-session-followups .monaco-button {
+.interactive-session .interactive-session-followups .monaco-button.interactive-followup-reply {
 	padding: 0px;
 	font-size: 11px;
 	font-weight: 600;
 	border: none;
+}
+
+.interactive-session .interactive-welcome .value .interactive-session-followups {
+	margin-bottom: 10px;
 }
 
 .interactive-list .interactive-item-container .monaco-toolbar .codicon {

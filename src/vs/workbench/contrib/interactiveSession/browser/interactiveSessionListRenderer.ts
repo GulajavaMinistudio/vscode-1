@@ -45,13 +45,13 @@ import { IInteractiveSessionCodeBlockActionContext } from 'vs/workbench/contrib/
 import { InteractiveSessionFollowups } from 'vs/workbench/contrib/interactiveSession/browser/interactiveSessionFollowups';
 import { InteractiveSessionEditorOptions } from 'vs/workbench/contrib/interactiveSession/browser/interactiveSessionOptions';
 import { interactiveSessionResponseHasProviderId } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionContextKeys';
-import { IInteractiveSlashCommand } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionService';
-import { IInteractiveRequestViewModel, IInteractiveResponseViewModel, isRequestVM, isResponseVM } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionViewModel';
+import { IInteractiveSessionReplyFollowup, IInteractiveSessionService, IInteractiveSlashCommand } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionService';
+import { IInteractiveRequestViewModel, IInteractiveResponseViewModel, IInteractiveWelcomeMessageViewModel, isRequestVM, isResponseVM, isWelcomeVM } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionViewModel';
 import { getNWords } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionWordCounter';
 
 const $ = dom.$;
 
-export type InteractiveTreeItem = IInteractiveRequestViewModel | IInteractiveResponseViewModel;
+export type InteractiveTreeItem = IInteractiveRequestViewModel | IInteractiveResponseViewModel | IInteractiveWelcomeMessageViewModel;
 
 interface IInteractiveListItemTemplate {
 	rowContainer: HTMLElement;
@@ -82,6 +82,9 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 
 	private readonly renderer: MarkdownRenderer;
 
+	protected readonly _onDidClickFollowup = this._register(new Emitter<IInteractiveSessionReplyFollowup>());
+	readonly onDidClickFollowup: Event<IInteractiveSessionReplyFollowup> = this._onDidClickFollowup.event;
+
 	protected readonly _onDidChangeItemHeight = this._register(new Emitter<IItemHeightChangeParams>());
 	readonly onDidChangeItemHeight: Event<IItemHeightChangeParams> = this._onDidChangeItemHeight.event;
 
@@ -97,6 +100,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 		@ILogService private readonly logService: ILogService,
 		@ICommandService private readonly commandService: ICommandService,
 		@IContextKeyService private readonly contextKeyService: IContextKeyService,
+		@IInteractiveSessionService private readonly interactiveSessionService: IInteractiveSessionService,
 	) {
 		super();
 		this.renderer = this.instantiationService.createInstance(MarkdownRenderer, {});
@@ -172,7 +176,9 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 
 	renderElement(node: ITreeNode<InteractiveTreeItem, FuzzyScore>, index: number, templateData: IInteractiveListItemTemplate): void {
 		const { element } = node;
-		const kind = isRequestVM(element) ? 'request' : 'response';
+		const kind = isRequestVM(element) ? 'request' :
+			isResponseVM(element) ? 'response' :
+				'welcome';
 		this.traceLayout('renderElement', `${kind}, index=${index}`);
 
 		interactiveSessionResponseHasProviderId.bindTo(templateData.contextKeyService).set(isResponseVM(element) && !!element.providerResponseId && !element.isPlaceholder);
@@ -181,6 +187,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 
 		templateData.rowContainer.classList.toggle('interactive-request', isRequestVM(element));
 		templateData.rowContainer.classList.toggle('interactive-response', isResponseVM(element));
+		templateData.rowContainer.classList.toggle('interactive-welcome', isWelcomeVM(element));
 		templateData.username.textContent = element.username;
 
 		if (element.avatarIconUri) {
@@ -211,13 +218,15 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 			timer.cancelAndSet(runProgressiveRender, 50);
 		} else if (isResponseVM(element)) {
 			this.basicRenderElement(element.response.value, element, index, templateData);
+		} else if (isRequestVM(element)) {
+			this.basicRenderElement(element.messageText, element, index, templateData);
 		} else {
-			this.basicRenderElement(element.message, element, index, templateData);
+			this.renderWelcomeMessage(element, templateData);
 		}
 	}
 
-	private basicRenderElement(markdownValue: string, element: InteractiveTreeItem, index: number, templateData: IInteractiveListItemTemplate) {
-		const result = this.renderMarkdown(new MarkdownString(markdownValue), element, templateData.elementDisposables, templateData);
+	private basicRenderElement(markdownValue: string, element: InteractiveTreeItem, index: number, templateData: IInteractiveListItemTemplate, fillInIncompleteTokens = false) {
+		const result = this.renderMarkdown(new MarkdownString(markdownValue), element, templateData.elementDisposables, templateData, fillInIncompleteTokens);
 		dom.clearNode(templateData.value);
 		templateData.value.appendChild(result.element);
 		templateData.elementDisposables.add(result);
@@ -233,7 +242,40 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 				followupsContainer,
 				element.commandFollowups,
 				defaultButtonStyles,
-				followup => this.commandService.executeCommand(followup.commandId, ...(followup.args ?? []))));
+				followup => {
+					this.interactiveSessionService.notifyUserAction({
+						providerId: element.providerId,
+						action: {
+							kind: 'command',
+							command: followup
+						}
+					});
+					return this.commandService.executeCommand(followup.commandId, ...(followup.args ?? []));
+				}));
+		}
+	}
+
+	private renderWelcomeMessage(element: IInteractiveWelcomeMessageViewModel, templateData: IInteractiveListItemTemplate) {
+		dom.clearNode(templateData.value);
+		const slashCommands = this.delegate.getSlashCommands();
+
+		for (const item of element.content) {
+			if (Array.isArray(item)) {
+				templateData.elementDisposables.add(new InteractiveSessionFollowups(
+					templateData.value,
+					item,
+					undefined,
+					followup => this._onDidClickFollowup.fire(followup)));
+			} else {
+				const result = this.renderMarkdown(item as IMarkdownString, element, templateData.elementDisposables, templateData);
+				for (const codeElement of result.element.querySelectorAll('code')) {
+					if (codeElement.textContent && slashCommands.find(command => codeElement.textContent === `/${command.command}`)) {
+						codeElement.classList.add('interactive-slash-command');
+					}
+				}
+				templateData.value.appendChild(result.element);
+				templateData.elementDisposables.add(result);
+			}
 		}
 	}
 
@@ -253,7 +295,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 				this.traceLayout('runProgressiveRender', `Rendered all available words, but model is not complete.`);
 			}
 			disposables.clear();
-			this.basicRenderElement(element.response.value, element, index, templateData);
+			this.basicRenderElement(element.response.value, element, index, templateData, !element.isComplete);
 		} else if (toRender) {
 			// Doing the progressive render
 			const plusCursor = toRender.match(/```.*$/) ? toRender + `\n${InteractiveListItemRenderer.cursorCharacter}` : toRender + ` ${InteractiveListItemRenderer.cursorCharacter}`;
@@ -318,17 +360,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 	private renderCodeBlock(data: IInteractiveResultCodeBlockData, disposables: DisposableStore): IDisposableReference<IInteractiveResultCodeBlockPart> {
 		const ref = this._editorPool.get();
 		const editorInfo = ref.object;
-		editorInfo.render(data);
-
-		const layoutEditor = (context: string) => {
-			editorInfo.layout(this._currentLayoutWidth);
-		};
-
-		layoutEditor('init');
-
-		disposables.add(editorInfo.textModel.onDidChangeContent(() => {
-			layoutEditor('textmodel');
-		}));
+		editorInfo.render(data, this._currentLayoutWidth);
 
 		return ref;
 	}
@@ -381,7 +413,7 @@ export class InteractiveSessionListDelegate implements IListVirtualDelegate<Inte
 
 	getHeight(element: InteractiveTreeItem): number {
 		const kind = isRequestVM(element) ? 'request' : 'response';
-		const height = element.currentRenderedHeight ?? 40;
+		const height = ('currentRenderedHeight' in element ? element.currentRenderedHeight : undefined) ?? 40;
 		this._traceLayout('getHeight', `${kind}, height=${height}`);
 		return height;
 	}
@@ -403,7 +435,7 @@ export class InteractiveSessionAccessibilityProvider implements IListAccessibili
 
 	getAriaLabel(element: InteractiveTreeItem): string {
 		if (isRequestVM(element)) {
-			return localize('interactiveRequest', "Request: {0}", element.message);
+			return localize('interactiveRequest', "Request: {0}", element.messageText);
 		}
 
 		if (isResponseVM(element)) {
@@ -427,7 +459,7 @@ interface IInteractiveResultCodeBlockPart {
 	readonly element: HTMLElement;
 	readonly textModel: ITextModel;
 	layout(width: number): void;
-	render(data: IInteractiveResultCodeBlockData): void;
+	render(data: IInteractiveResultCodeBlockData, width: number): void;
 	dispose(): void;
 }
 
@@ -529,10 +561,20 @@ class CodeBlockPart extends Disposable implements IInteractiveResultCodeBlockPar
 		this.editor.layout({ width, height: realContentHeight });
 	}
 
-	render(data: IInteractiveResultCodeBlockData): void {
+	render(data: IInteractiveResultCodeBlockData, width: number): void {
 		this.contextKeyService.updateParent(data.parentContextKeyService);
+
+		if (this.options.configuration.resultEditor.wordWrap === 'on') {
+			// Intialize the editor with the new proper width so that getContentHeight
+			// will be computed correctly in the next call to layout()
+			this.layout(width);
+		}
+
 		this.setText(data.text);
 		this.setLanguage(data.languageId);
+
+		this.layout(width);
+
 		this.toolbar.context = <IInteractiveSessionCodeBlockActionContext>{
 			code: data.text,
 			codeBlockIndex: data.index,

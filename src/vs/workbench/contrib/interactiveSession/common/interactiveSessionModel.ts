@@ -8,13 +8,13 @@ import { IMarkdownString, MarkdownString } from 'vs/base/common/htmlContent';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { URI } from 'vs/base/common/uri';
 import { ILogService } from 'vs/platform/log/common/log';
-import { IInteractiveProgress, IInteractiveResponse, IInteractiveSession, IInteractiveSessionFollowup } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionService';
+import { IInteractiveProgress, IInteractiveResponse, IInteractiveSession, IInteractiveSessionFollowup, IInteractiveSessionReplyFollowup } from 'vs/workbench/contrib/interactiveSession/common/interactiveSessionService';
 
 export interface IInteractiveRequestModel {
 	readonly id: string;
 	readonly username: string;
 	readonly avatarIconUri?: URI;
-	readonly message: string;
+	readonly message: string | IInteractiveSessionReplyFollowup;
 	readonly response: IInteractiveResponseModel | undefined;
 }
 
@@ -54,7 +54,7 @@ export class InteractiveRequestModel implements IInteractiveRequestModel {
 		return this._id;
 	}
 
-	constructor(public readonly message: string, public readonly username: string, public readonly avatarIconUri?: URI) {
+	constructor(public readonly message: string | IInteractiveSessionReplyFollowup, public readonly username: string, public readonly avatarIconUri?: URI) {
 		this._id = 'request_' + InteractiveRequestModel.nextId++;
 	}
 }
@@ -131,6 +131,7 @@ export interface IInteractiveSessionModel {
 	readonly onDidChange: Event<IInteractiveSessionChangeEvent>;
 	readonly sessionId: number;
 	readonly providerId: string;
+	readonly welcomeMessage: IInteractiveSessionWelcomeMessageModel | undefined;
 	getRequests(): IInteractiveRequestModel[];
 }
 
@@ -185,6 +186,7 @@ export class InteractiveSessionModel extends Disposable implements IInteractiveS
 	constructor(
 		public readonly session: IInteractiveSession,
 		public readonly providerId: string,
+		public readonly welcomeMessage: InteractiveWelcomeMessageModel | undefined,
 		initialData: ISerializableInteractiveSessionData | undefined,
 		@ILogService private readonly logService: ILogService
 	) {
@@ -223,7 +225,7 @@ export class InteractiveSessionModel extends Disposable implements IInteractiveS
 		return this._requests;
 	}
 
-	addRequest(message: string): InteractiveRequestModel {
+	addRequest(message: string | IInteractiveSessionReplyFollowup): InteractiveRequestModel {
 		const request = new InteractiveRequestModel(message, this.session.requesterUsername, this.session.requesterAvatarIconUri);
 
 		// TODO this is suspicious, maybe the request should know that it is "in progress" instead of having a fake response model.
@@ -274,7 +276,7 @@ export class InteractiveSessionModel extends Disposable implements IInteractiveS
 			requests: this._requests.map(r => {
 				return {
 					providerResponseId: r.response?.providerResponseId,
-					message: r.message,
+					message: typeof r.message === 'string' ? r.message : r.message.message,
 					response: r.response ? r.response.response.value : undefined,
 					responseErrorDetails: r.response?.errorDetails,
 					followups: r.response?.followups
@@ -289,5 +291,28 @@ export class InteractiveSessionModel extends Disposable implements IInteractiveS
 		this._requests.forEach(r => r.response?.dispose());
 		this._onDidDispose.fire();
 		super.dispose();
+	}
+}
+
+export type IInteractiveWelcomeMessageContent = IMarkdownString | IInteractiveSessionReplyFollowup[];
+
+export interface IInteractiveSessionWelcomeMessageModel {
+	readonly id: string;
+	readonly content: IInteractiveWelcomeMessageContent[];
+	readonly username: string;
+	readonly avatarIconUri?: URI;
+
+}
+
+export class InteractiveWelcomeMessageModel implements IInteractiveSessionWelcomeMessageModel {
+	private static nextId = 0;
+
+	private _id: string;
+	public get id(): string {
+		return this._id;
+	}
+
+	constructor(public readonly content: IInteractiveWelcomeMessageContent[], public readonly username: string, public readonly avatarIconUri?: URI) {
+		this._id = 'welcome_' + InteractiveWelcomeMessageModel.nextId++;
 	}
 }
