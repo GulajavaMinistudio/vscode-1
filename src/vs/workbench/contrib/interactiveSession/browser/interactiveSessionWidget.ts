@@ -417,6 +417,7 @@ export class InteractiveSessionWidget extends Disposable implements IInteractive
 		options.wrappingStrategy = 'advanced';
 		options.bracketPairColorization = { enabled: false };
 		options.suggest = { showIcons: false };
+		options.scrollbar = { ...(options.scrollbar ?? {}), vertical: 'hidden' };
 
 		const inputEditorElement = dom.append(inputContainer, $('.interactive-input-editor'));
 		this._inputEditor = this._register(scopedInstantiationService.createInstance(CodeEditorWidget, inputEditorElement, options, { ...getSimpleCodeEditorWidgetOptions(), isSimpleWidget: false }));
@@ -553,13 +554,13 @@ export class InteractiveSessionWidget extends Disposable implements IInteractive
 			return;
 		}
 
-		const items = this.viewModel.getItems();
+		const items = this.tree.getNode(null).children;
 		const lastItem = items[items.length - 1];
 		if (!lastItem) {
 			return;
 		}
 
-		this.tree.setFocus([lastItem]);
+		this.tree.setFocus([lastItem.element]);
 		this.tree.domFocus();
 	}
 

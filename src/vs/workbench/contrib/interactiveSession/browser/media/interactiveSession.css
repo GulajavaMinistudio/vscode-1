@@ -87,6 +87,15 @@
 	padding: 4px 6px;
 }
 
+.interactive-list .interactive-item-container .value a {
+	color: var(--vscode-textLink-foreground);
+}
+
+.interactive-list .interactive-item-container .value a:hover,
+.interactive-list .interactive-item-container .value a:active {
+	color: var(--vscode-textLink-activeForeground);
+}
+
 .interactive-list {
 	overflow: hidden;
 }
@@ -145,7 +154,7 @@
 
 .interactive-session .interactive-input-and-toolbar .monaco-editor,
 .interactive-session .interactive-input-and-toolbar .monaco-editor .monaco-editor-background {
-	background-color: var(--vscode-input-background);
+	background-color: var(--vscode-input-background) !important;
 }
 
 .interactive-session .interactive-input-and-toolbar .monaco-editor .cursors-layer {
@@ -154,7 +163,10 @@
 
 .interactive-session .interactive-input-part .interactive-execute-toolbar {
 	position: absolute;
+	height: 22px;
+	
 	right: 3px;
+	bottom: 6px;
 }
 
 .interactive-session .interactive-input-part .interactive-execute-toolbar .codicon-debug-stop {
@@ -194,9 +206,8 @@
 	display: initial;
 }
 
-.interactive-session .interactive-result-editor-wrapper .monaco-editor,
-.interactive-session .interactive-result-editor-wrapper .monaco-editor .overflow-guard {
-	border-radius: 4px;
+.interactive-session .interactive-result-editor-wrapper .interactive-result-editor {
+	border: 1px solid var(--vscode-input-border, transparent);
 }
 
 .interactive-session .interactive-response .monaco-editor .margin,
