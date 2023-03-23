@@ -4,10 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as dom from 'vs/base/browser/dom';
+import { IActionViewItemOptions } from 'vs/base/browser/ui/actionbar/actionViewItems';
 import { renderIcon } from 'vs/base/browser/ui/iconLabel/iconLabels';
 import { IListVirtualDelegate } from 'vs/base/browser/ui/list/list';
 import { IListAccessibilityProvider } from 'vs/base/browser/ui/list/listWidget';
 import { ITreeNode, ITreeRenderer } from 'vs/base/browser/ui/tree/tree';
+import { IAction } from 'vs/base/common/actions';
 import { IntervalTimer } from 'vs/base/common/async';
 import { Codicon } from 'vs/base/common/codicons';
 import { Emitter, Event } from 'vs/base/common/event';
@@ -31,8 +33,9 @@ import { ViewportSemanticTokensContribution } from 'vs/editor/contrib/semanticTo
 import { SmartSelectController } from 'vs/editor/contrib/smartSelect/browser/smartSelect';
 import { WordHighlighterContribution } from 'vs/editor/contrib/wordHighlighter/browser/wordHighlighter';
 import { localize } from 'vs/nls';
+import { IMenuEntryActionViewItemOptions, MenuEntryActionViewItem } from 'vs/platform/actions/browser/menuEntryActionViewItem';
 import { MenuWorkbenchToolBar } from 'vs/platform/actions/browser/toolbar';
-import { MenuId } from 'vs/platform/actions/common/actions';
+import { MenuId, MenuItemAction } from 'vs/platform/actions/common/actions';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
@@ -168,6 +171,13 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 		const titleToolbar = templateDisposables.add(scopedInstantiationService.createInstance(MenuWorkbenchToolBar, header, MenuId.InteractiveSessionTitle, {
 			menuOptions: {
 				shouldForwardArgs: true
+			},
+			actionViewItemProvider: (action: IAction, options: IActionViewItemOptions) => {
+				if (action instanceof MenuItemAction) {
+					return scopedInstantiationService.createInstance(InteractiveSessionVoteButton, action, options as IMenuEntryActionViewItemOptions);
+				}
+
+				return undefined;
 			}
 		}));
 
@@ -195,6 +205,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 		templateData.rowContainer.classList.toggle('interactive-request', isRequestVM(element));
 		templateData.rowContainer.classList.toggle('interactive-response', isResponseVM(element));
 		templateData.rowContainer.classList.toggle('interactive-welcome', isWelcomeVM(element));
+		templateData.rowContainer.classList.toggle('filtered-response', !!(isResponseVM(element) && element.errorDetails?.responseIsFiltered));
 		templateData.username.textContent = element.username;
 
 		if (element.avatarIconUri) {
@@ -230,7 +241,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 			runProgressiveRender(true);
 			timer.cancelAndSet(runProgressiveRender, 50);
 		} else if (isResponseVM(element)) {
-			this.basicRenderElement(element.response.value, element, index, templateData, element.isCanceled);
+			this.basicRenderElement(element.response.value, element, index, templateData);
 		} else if (isRequestVM(element)) {
 			this.basicRenderElement(element.messageText, element, index, templateData);
 		} else {
@@ -238,7 +249,8 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 		}
 	}
 
-	private basicRenderElement(markdownValue: string, element: InteractiveTreeItem, index: number, templateData: IInteractiveListItemTemplate, fillInIncompleteTokens = false) {
+	private basicRenderElement(markdownValue: string, element: InteractiveTreeItem, index: number, templateData: IInteractiveListItemTemplate) {
+		const fillInIncompleteTokens = isResponseVM(element) && (!element.isComplete || element.isCanceled || element.errorDetails?.responseIsFiltered || element.errorDetails?.responseIsIncomplete);
 		const result = this.renderMarkdown(new MarkdownString(markdownValue), element, templateData.elementDisposables, templateData, fillInIncompleteTokens);
 		dom.clearNode(templateData.value);
 		templateData.value.appendChild(result.element);
@@ -299,7 +311,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 		if (element.isCanceled) {
 			this.traceLayout('runProgressiveRender', `canceled, index=${index}`);
 			element.renderData = undefined;
-			this.basicRenderElement(element.response.value, element, index, templateData, true);
+			this.basicRenderElement(element.response.value, element, index, templateData);
 			isFullyRendered = true;
 		} else {
 			// TODO- this method has the side effect of updating element.renderData
@@ -315,7 +327,7 @@ export class InteractiveListItemRenderer extends Disposable implements ITreeRend
 					this.traceLayout('runProgressiveRender', `Rendered all available words, but model is not complete.`);
 				}
 				disposables.clear();
-				this.basicRenderElement(element.response.value, element, index, templateData, !element.isComplete);
+				this.basicRenderElement(element.response.value, element, index, templateData);
 			} else if (toRender) {
 				// Doing the progressive render
 				const plusCursor = toRender.match(/```.*$/) ? toRender + `\n${InteractiveListItemRenderer.cursorCharacter}` : toRender + ` ${InteractiveListItemRenderer.cursorCharacter}`;
@@ -575,6 +587,7 @@ class CodeBlockPart extends Disposable implements IInteractiveResultCodeBlockPar
 	private getEditorOptionsFromConfig(): IEditorOptions {
 		return {
 			wordWrap: this.options.configuration.resultEditor.wordWrap,
+			fontLigatures: this.options.configuration.resultEditor.fontLigatures,
 			bracketPairColorization: this.options.configuration.resultEditor.bracketPairColorization,
 			fontFamily: this.options.configuration.resultEditor.fontFamily === 'default' ?
 				EDITOR_FONT_DEFAULTS.fontFamily :
@@ -725,5 +738,12 @@ class ResourcePool<T extends IDisposable> extends Disposable {
 	release(item: T): void {
 		this._inUse.delete(item);
 		this.pool.push(item);
+	}
+}
+
+class InteractiveSessionVoteButton extends MenuEntryActionViewItem {
+	override render(container: HTMLElement): void {
+		super.render(container);
+		container.classList.toggle('checked', this.action.checked);
 	}
 }
