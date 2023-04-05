@@ -40,10 +40,10 @@ flakySuite('Native Modules (all platforms)', () => {
 		assert.ok(typeof nodePty.spawn === 'function', testErrorMessage('node-pty'));
 	});
 
-	(process.type === 'renderer' ? test.skip /* TODO@electron module is not context aware yet and thus cannot load in Electron renderer used by tests */ : test)('@vscode/spdlog', async () => {
-		const spdlog = await import('@vscode/spdlog');
-		assert.ok(typeof spdlog.createRotatingLogger === 'function', testErrorMessage('@vscode/spdlog'));
-		assert.ok(typeof spdlog.version === 'number', testErrorMessage('@vscode/spdlog'));
+	(process.type === 'renderer' ? test.skip /* TODO@electron module is not context aware yet and thus cannot load in Electron renderer used by tests */ : test)('spdlog', async () => {
+		const spdlog = await import('spdlog');
+		assert.ok(typeof spdlog.createRotatingLogger === 'function', testErrorMessage('spdlog'));
+		assert.ok(typeof spdlog.version === 'number', testErrorMessage('spdlog'));
 	});
 
 	test('@parcel/watcher', async () => {
@@ -109,10 +109,10 @@ flakySuite('Native Modules (all platforms)', () => {
 
 (!isWindows ? suite.skip : suite)('Native Modules (Windows)', () => {
 
-	(process.type === 'renderer' ? test.skip /* TODO@electron module is not context aware yet and thus cannot load in Electron renderer used by tests */ : test)('windows-mutex', async () => {
-		const mutex = await import('windows-mutex');
-		assert.ok(mutex && typeof mutex.isActive === 'function', testErrorMessage('windows-mutex'));
-		assert.ok(typeof mutex.isActive === 'function', testErrorMessage('windows-mutex'));
+	(process.type === 'renderer' ? test.skip /* TODO@electron module is not context aware yet and thus cannot load in Electron renderer used by tests */ : test)('@vscode/windows-mutex', async () => {
+		const mutex = await import('@vscode/windows-mutex');
+		assert.ok(mutex && typeof mutex.isActive === 'function', testErrorMessage('@vscode/windows-mutex'));
+		assert.ok(typeof mutex.isActive === 'function', testErrorMessage('@vscode/windows-mutex'));
 	});
 
 	test('windows-foreground-love', async () => {
