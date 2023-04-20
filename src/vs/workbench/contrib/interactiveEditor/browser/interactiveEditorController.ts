@@ -14,20 +14,20 @@ import { DisposableStore } from 'vs/base/common/lifecycle';
 import { LRUCache } from 'vs/base/common/map';
 import { isEqual } from 'vs/base/common/resources';
 import { StopWatch } from 'vs/base/common/stopwatch';
-import { splitLines } from 'vs/base/common/strings';
 import { URI } from 'vs/base/common/uri';
 import 'vs/css!./interactiveEditor';
 import { IActiveCodeEditor, ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IBulkEditService, ResourceEdit, ResourceFileEdit, ResourceTextEdit } from 'vs/editor/browser/services/bulkEditService';
 import { EditOperation } from 'vs/editor/common/core/editOperation';
 import { Position } from 'vs/editor/common/core/position';
-import { Range } from 'vs/editor/common/core/range';
+import { IRange, Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
+import { LineRangeMapping } from 'vs/editor/common/diff/linesDiffComputer';
 import { IEditorContribution, IEditorDecorationsCollection, ScrollType } from 'vs/editor/common/editorCommon';
 import { LanguageSelector } from 'vs/editor/common/languageSelector';
 import { CompletionContext, CompletionItem, CompletionItemInsertTextRule, CompletionItemKind, CompletionItemProvider, CompletionList, ProviderResult, TextEdit } from 'vs/editor/common/languages';
 import { ICursorStateComputer, IModelDecorationOptions, IModelDeltaDecoration, ITextModel, IValidEditOperation } from 'vs/editor/common/model';
-import { ModelDecorationOptions } from 'vs/editor/common/model/textModel';
+import { ModelDecorationOptions, createTextBufferFactoryFromSnapshot } from 'vs/editor/common/model/textModel';
 import { IEditorWorkerService } from 'vs/editor/common/services/editorWorker';
 import { ILanguageFeaturesService } from 'vs/editor/common/services/languageFeatures';
 import { IModelService } from 'vs/editor/common/services/model';
@@ -225,6 +225,12 @@ class LastEditorState {
 
 type EditMode = 'live' | 'livePreview' | 'preview';
 
+export interface InteractiveEditorRunOptions {
+	initialRange?: IRange;
+	message?: string;
+	autoSend?: boolean;
+}
+
 export class InteractiveEditorController implements IEditorContribution {
 
 	static ID = 'interactiveEditor';
@@ -301,7 +307,7 @@ export class InteractiveEditorController implements IEditorContribution {
 		return this._configurationService.getValue('interactiveEditor.editMode');
 	}
 
-	async run(initialRange?: Range): Promise<void> {
+	async run(options: InteractiveEditorRunOptions | undefined): Promise<void> {
 
 		const editMode = this._getMode();
 
@@ -352,23 +358,17 @@ export class InteractiveEditorController implements IEditorContribution {
 		const blockDecoration = this._editor.createDecorationsCollection();
 		const wholeRangeDecoration = this._editor.createDecorationsCollection();
 
-		if (!initialRange) {
-			initialRange = session.wholeRange ? Range.lift(session.wholeRange) : selection;
-		}
-		if (initialRange.isEmpty()) {
-			initialRange = new Range(
-				initialRange.startLineNumber, 1,
-				initialRange.startLineNumber, textModel.getLineMaxColumn(initialRange.startLineNumber)
-			);
+		let optionsRange = Range.lift(options?.initialRange) ?? (session.wholeRange ? Range.lift(session.wholeRange) : selection);
+		if (optionsRange.isEmpty()) {
+			optionsRange = new Range(optionsRange.startLineNumber, 1, optionsRange.startLineNumber, textModel.getLineMaxColumn(optionsRange.startLineNumber));
 		}
 		wholeRangeDecoration.set([{
-			range: initialRange,
+			range: optionsRange,
 			options: InteractiveEditorController._decoWholeRange
 		}]);
 
-
 		let placeholder = session.placeholder ?? '';
-		let value = '';
+		let value = options?.message ?? '';
 
 		const store = new DisposableStore();
 
@@ -381,15 +381,18 @@ export class InteractiveEditorController implements IEditorContribution {
 		// CANCEL when input changes
 		this._editor.onDidChangeModel(this.cancelSession, this, store);
 
-		// REposition the zone widget whenever the block decoration changes
-		let lastPost: Position | undefined;
-		wholeRangeDecoration.onDidChange(e => {
-			const range = wholeRangeDecoration.getRange(0);
-			if (range && (!lastPost || !lastPost.equals(range.getEndPosition()))) {
-				lastPost = range.getEndPosition();
-				this._zone.updatePosition(lastPost);
-			}
-		}, undefined, store);
+		if (editMode === 'live') {
+
+			// REposition the zone widget whenever the block decoration changes
+			let lastPost: Position | undefined;
+			wholeRangeDecoration.onDidChange(e => {
+				const range = wholeRangeDecoration.getRange(0);
+				if (range && (!lastPost || !lastPost.equals(range.getEndPosition()))) {
+					lastPost = range.getEndPosition();
+					this._zone.updatePosition(lastPost);
+				}
+			}, undefined, store);
+		}
 
 		let ignoreModelChanges = false;
 		this._editor.onDidChangeModelContent(e => {
@@ -424,9 +427,15 @@ export class InteractiveEditorController implements IEditorContribution {
 		const roundStore = new DisposableStore();
 		store.add(roundStore);
 
-		const diffBaseModel = this._modelService.createModel(textModel.getValue(), { languageId: textModel.getLanguageId(), onDidChange: Event.None }, undefined, true);
-		store.add(diffBaseModel);
-		const diffZone = this._instaService.createInstance(InteractiveEditorDiffWidget, this._editor, diffBaseModel);
+		let textModel0Changes: LineRangeMapping[] | undefined;
+		const textModel0 = this._modelService.createModel(
+			createTextBufferFactoryFromSnapshot(textModel.createSnapshot()),
+			{ languageId: textModel.getLanguageId(), onDidChange: Event.None },
+			undefined, true
+		);
+
+		store.add(textModel0);
+		const diffZone = this._instaService.createInstance(InteractiveEditorDiffWidget, this._editor, textModel0);
 
 		do {
 
@@ -439,13 +448,6 @@ export class InteractiveEditorController implements IEditorContribution {
 				break;
 			}
 
-			if (round > 1 && editMode === 'livePreview') {
-				if (!textModel.equalsTextBuffer(diffBaseModel.getTextBuffer())) {
-					diffZone.show(wholeRangeDecoration.getRange(0)!);
-				} else {
-					diffZone.hide();
-				}
-			}
 
 			// visuals: add block decoration
 			blockDecoration.set([{
@@ -459,12 +461,25 @@ export class InteractiveEditorController implements IEditorContribution {
 			this._historyOffset = -1;
 			const inputPromise = this._zone.getInput(wholeRange.getEndPosition(), placeholder, value, this._ctsRequest.token);
 
-
+			if (textModel0Changes && editMode === 'livePreview') {
+				const diffPosition = diffZone.getEndPositionForChanges(wholeRange, textModel0Changes);
+				if (diffPosition) {
+					const newInputPosition = diffPosition.delta(0, 1);
+					if (wholeRange.getEndPosition().isBefore(newInputPosition)) {
+						this._zone.updatePosition(newInputPosition);
+					}
+				}
+				diffZone.showDiff(
+					() => wholeRangeDecoration.getRange(0)!, // TODO@jrieken if it can be null it will be null
+					textModel0Changes
+				);
+			}
 			this._ctxLastFeedbackKind.reset();
-
 			// reveal the line after the whole range to ensure that the input box is visible
 			this._editor.revealPosition({ lineNumber: wholeRange.endLineNumber + 1, column: 1 }, ScrollType.Smooth);
-
+			if (options?.autoSend && round === 1) {
+				this.accept();
+			}
 			const input = await inputPromise;
 			roundStore.clear();
 
@@ -476,7 +491,7 @@ export class InteractiveEditorController implements IEditorContribution {
 				InteractiveEditorController._promptHistory.unshift(input);
 			}
 
-			const refer = session.slashCommands?.some(value => value.refer && input.startsWith(`/${value.command}`));
+			const refer = session.slashCommands?.some(value => value.refer && input!.startsWith(`/${value.command}`));
 			if (refer) {
 				this._logService.info('[IE] seeing refer command, continuing outside editor', provider.debugName);
 				this._editor.setSelection(wholeRange);
@@ -528,6 +543,7 @@ export class InteractiveEditorController implements IEditorContribution {
 
 
 			this._recorder.addExchange(session, request, reply);
+			this._zone.widget.updateToolbar(true);
 
 			if (reply.type === 'message') {
 				this._logService.info('[IE] received a MESSAGE, continuing outside editor', provider.debugName);
@@ -569,8 +585,16 @@ export class InteractiveEditorController implements IEditorContribution {
 
 			} else {
 				// make edits more minimal
-				const moreMinimalEdits = (await this._editorWorkerService.computeHumanReadableDiff(textModel.uri, editResponse.localEdits));
+
+				const moreMinimalEdits = (await this._editorWorkerService.computeMoreMinimalEdits(textModel.uri, editResponse.localEdits));
+				const editOperations = (moreMinimalEdits ?? editResponse.localEdits).map(edit => EditOperation.replace(Range.lift(edit.range), edit.text));
 				this._logService.trace('[IE] edits from PROVIDER and after making them MORE MINIMAL', provider.debugName, editResponse.localEdits, moreMinimalEdits);
+
+				const textModelNplus1 = this._modelService.createModel(createTextBufferFactoryFromSnapshot(textModel.createSnapshot()), null, undefined, true);
+				textModelNplus1.applyEdits(editOperations);
+				const diff = await this._editorWorkerService.computeDiff(textModel0.uri, textModelNplus1.uri, { ignoreTrimWhitespace: false, maxComputationTimeMs: 5000 }, 'advanced');
+				textModel0Changes = diff?.changes ?? undefined;
+				textModelNplus1.dispose();
 
 				try {
 					ignoreModelChanges = true;
@@ -587,7 +611,7 @@ export class InteractiveEditorController implements IEditorContribution {
 					this._editor.pushUndoStop();
 					this._editor.executeEdits(
 						'interactive-editor',
-						(moreMinimalEdits ?? editResponse.localEdits).map(edit => EditOperation.replace(Range.lift(edit.range), edit.text)),
+						editOperations,
 						cursorStateComputerAndInlineDiffCollection
 					);
 					this._editor.pushUndoStop();
@@ -600,35 +624,24 @@ export class InteractiveEditorController implements IEditorContribution {
 					inlineDiffDecorations.update();
 				}
 
-				// line count
-				const lineSet = new Set<number>();
-				let addRemoveCount = 0;
-				for (const edit of moreMinimalEdits ?? editResponse.localEdits) {
-
-					const len2 = splitLines(edit.text).length - 1;
-
-					if (Range.isEmpty(edit.range) && len2 > 0) {
-						// insert lines
-						addRemoveCount += len2;
-					} else if (Range.isEmpty(edit.range) && edit.text.length === 0) {
-						// delete
-						addRemoveCount += edit.range.endLineNumber - edit.range.startLineNumber + 1;
-					} else {
-						// edit
-						for (let line = edit.range.startLineNumber; line <= edit.range.endLineNumber; line++) {
-							lineSet.add(line);
-						}
+				// summary message
+				let linesChanged = 0;
+				if (textModel0Changes) {
+					for (const change of textModel0Changes) {
+						linesChanged += change.changedLineCount;
 					}
 				}
-				const linesChanged = addRemoveCount + lineSet.size;
-
-				this._zone.widget.updateMessage(linesChanged === 1
-					? localize('lines.1', "Generated reply and changed 1 line.")
-					: localize('lines.N', "Generated reply and changed {0} lines.", linesChanged)
-				);
+				let message: string;
+				if (linesChanged === 0) {
+					message = localize('lines.0', "Generated reply");
+				} else if (linesChanged === 1) {
+					message = localize('lines.1', "Generated reply and changed 1 line.");
+				} else {
+					message = localize('lines.N', "Generated reply and changed {0} lines.", linesChanged);
+				}
+				this._zone.widget.updateMessage(message);
 			}
 
-			this._zone.widget.updateToolbar(true);
 
 			if (editResponse.singleCreateFileEdit) {
 				this._zone.widget.showCreatePreview(editResponse.singleCreateFileEdit.uri, await Promise.all(editResponse.singleCreateFileEdit.edits));
@@ -832,7 +845,7 @@ class LiveStrategy extends EditModeStrategy {
 	}
 
 	cancel(): void {
-		while (this._model.getAlternativeVersionId() !== this._versionId) {
+		while (this._model.getAlternativeVersionId() !== this._versionId && this._model.canUndo()) {
 			this._model.undo();
 		}
 	}
@@ -935,7 +948,7 @@ function installSlashCommandSupport(accessor: ServicesAccessor, editor: IActiveC
 
 async function showMessageResponse(accessor: ServicesAccessor, query: string, response: string) {
 	const interactiveSessionService = accessor.get(IInteractiveSessionService);
-	const providerId = interactiveSessionService.getProviderIds()[0];
+	const providerId = interactiveSessionService.getProviderInfos()[0]?.id;
 
 	const interactiveSessionWidgetService = accessor.get(IInteractiveSessionWidgetService);
 	const widget = await interactiveSessionWidgetService.revealViewForProvider(providerId);
@@ -948,7 +961,7 @@ async function sendRequest(accessor: ServicesAccessor, query: string) {
 	const interactiveSessionService = accessor.get(IInteractiveSessionService);
 	const widgetService = accessor.get(IInteractiveSessionWidgetService);
 
-	const providerId = interactiveSessionService.getProviderIds()[0];
+	const providerId = interactiveSessionService.getProviderInfos()[0]?.id;
 	const widget = await widgetService.revealViewForProvider(providerId);
 	if (!widget) {
 		return;
