@@ -188,7 +188,7 @@ export async function main(argv: string[]): Promise<any> {
 
 		const processCallbacks: ((child: ChildProcess) => Promise<void>)[] = [];
 
-		const verbose = args.verbose || args.status;
+		const verbose = args.verbose;
 		if (verbose) {
 			env['ELECTRON_ENABLE_LOGGING'] = '1';
 
@@ -413,6 +413,10 @@ export async function main(argv: string[]): Promise<any> {
 
 		let child: ChildProcess;
 		if (!isMacOSBigSurOrNewer) {
+			if (!verbose && args.status) {
+				options['stdio'] = ['ignore', 'pipe', 'ignore']; // restore ability to see output when --status is used
+			}
+
 			// We spawn process.execPath directly
 			child = spawn(process.execPath, argv.slice(2), options);
 		} else {
@@ -431,13 +435,13 @@ export async function main(argv: string[]): Promise<any> {
 			// -a opens the given application.
 			spawnArgs.push('-a', process.execPath); // -a: opens a specific application
 
-			if (verbose) {
+			if (verbose || args.status) {
 				spawnArgs.push('--wait-apps'); // `open --wait-apps`: blocks until the launched app is closed (even if they were already running)
 
 				// The open command only allows for redirecting stderr and stdout to files,
 				// so we make it redirect those to temp files, and then use a logger to
 				// redirect the file output to the console
-				for (const outputType of ['stdout', 'stderr']) {
+				for (const outputType of verbose ? ['stdout', 'stderr'] : ['stdout']) {
 
 					// Tmp file to target output to
 					const tmpName = randomPath(tmpdir(), `code-${outputType}`);
