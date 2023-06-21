@@ -40,6 +40,9 @@ export class ModesHoverController implements IEditorContribution {
 	private readonly _didChangeConfigurationHandler: IDisposable;
 
 	private _contentWidget: ContentHoverController | null;
+
+	getWidgetContent(): string | undefined { return this._contentWidget?.getWidgetContent(); }
+
 	private _glyphWidget: MarginHoverWidget | null;
 
 	private _isMouseDown: boolean;
