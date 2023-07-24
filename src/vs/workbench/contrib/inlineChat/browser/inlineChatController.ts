@@ -158,6 +158,10 @@ export class InlineChatController implements IEditorContribution {
 		}
 	}
 
+	getMessage(): string | undefined {
+		return this._zone.value.widget.responseContent;
+	}
+
 	getId(): string {
 		return INLINE_CHAT_ID;
 	}
@@ -630,6 +634,7 @@ export class InlineChatController implements IEditorContribution {
 			}
 		}
 		this._ctxResponseTypes.set(responseTypes);
+		this._ctxDidEdit.set(this._activeSession.hasChangedText);
 
 		if (response instanceof EmptyResponse) {
 			// show status message
