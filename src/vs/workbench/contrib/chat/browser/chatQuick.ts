@@ -4,7 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as dom from 'vs/base/browser/dom';
+import { Orientation, Sash } from 'vs/base/browser/ui/sash/sash';
 import { CancellationToken } from 'vs/base/common/cancellation';
+import { Emitter } from 'vs/base/common/event';
 import { Disposable, DisposableStore } from 'vs/base/common/lifecycle';
 import { IContextKeyService, IScopedContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -17,24 +19,29 @@ import { ChatWidget } from 'vs/workbench/contrib/chat/browser/chatWidget';
 import { ChatModel } from 'vs/workbench/contrib/chat/common/chatModel';
 import { IChatService } from 'vs/workbench/contrib/chat/common/chatService';
 
-export class QuickChatService implements IQuickChatService {
+export class QuickChatService extends Disposable implements IQuickChatService {
 	readonly _serviceBrand: undefined;
 
-	_input: IQuickWidget | undefined;
-	_currentChat: QuickChat | undefined;
+	private readonly _onDidClose = this._register(new Emitter<void>());
+	readonly onDidClose = this._onDidClose.event;
+
+	private _input: IQuickWidget | undefined;
+	private _currentChat: QuickChat | undefined;
 
 	constructor(
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 		@IChatService private readonly chatService: IChatService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
-	) { }
+	) {
+		super();
+	}
 
 	get enabled(): boolean {
 		return this.chatService.getProviderInfos().length > 0;
 	}
 
 	get focused(): boolean {
-		const widget = this._input?.widget as HTMLElement;
+		const widget = this._input?.widget as HTMLElement | undefined;
 		if (!widget) {
 			return false;
 		}
@@ -45,7 +52,13 @@ export class QuickChatService implements IQuickChatService {
 		// If the input is already shown, hide it. This provides a toggle behavior of the quick pick
 		if (this.focused) {
 			this.close();
-			return;
+		} else {
+			this.open(providerId, query);
+		}
+	}
+	open(providerId?: string, query?: string | undefined): void {
+		if (this.focused) {
+			return this.focus();
 		}
 
 		// Check if any providers are available. If not, show nothing
@@ -78,6 +91,7 @@ export class QuickChatService implements IQuickChatService {
 		disposableStore.add(this._input.onDidHide(() => {
 			disposableStore.dispose();
 			this._input = undefined;
+			this._onDidClose.fire();
 		}));
 
 		this._currentChat.focus();
@@ -101,6 +115,7 @@ export class QuickChatService implements IQuickChatService {
 
 class QuickChat extends Disposable {
 	private widget!: ChatWidget;
+	private sash!: Sash;
 	private model: ChatModel | undefined;
 	private _currentQuery: string | undefined;
 
@@ -149,7 +164,7 @@ class QuickChat extends Disposable {
 				}));
 		this.widget.render(parent);
 		this.widget.setVisible(true);
-		this.widget.setDynamicChatTreeItemLayout(2, 600);
+		this.widget.setDynamicChatTreeItemLayout(2, 900);
 		this.updateModel();
 		if (this._currentQuery) {
 			this.widget.inputEditor.setSelection({
@@ -160,14 +175,24 @@ class QuickChat extends Disposable {
 			});
 		}
 
-		this.registerListeners();
+		this.sash?.dispose();
+		this.sash = this._register(new Sash(parent, { getHorizontalSashTop: () => parent.offsetHeight }, { orientation: Orientation.HORIZONTAL }));
+		this.registerListeners(parent);
 	}
 
-	private registerListeners(): void {
+	private registerListeners(parent: HTMLElement): void {
 		this._register(this.widget.inputEditor.onDidChangeModelContent((e) => {
 			this._currentQuery = this.widget.inputEditor.getValue();
 		}));
 		this._register(this.widget.onDidClear(() => this.clear()));
+		this._register(this.sash.onDidChange((e) => {
+			if (e.currentY < 200) {
+				return;
+			}
+			this.widget.layout(e.currentY, parent.offsetWidth);
+			this.sash.layout();
+		}));
+		this._register(this.widget.onDidChangeHeight((e) => this.sash.layout()));
 	}
 
 	async acceptInput(): Promise<void> {
