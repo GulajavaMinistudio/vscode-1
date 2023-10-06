@@ -13,7 +13,7 @@ import { OffsetRange } from 'vs/editor/common/core/offsetRange';
 import { ILogService } from 'vs/platform/log/common/log';
 import { IChatAgentData, IChatAgentService } from 'vs/workbench/contrib/chat/common/chatAgents';
 import { ChatRequestTextPart, IParsedChatRequest, reviveParsedChatRequest } from 'vs/workbench/contrib/chat/common/chatParserTypes';
-import { IChat, IChatFollowup, IChatProgress, IChatReplyFollowup, IChatResponse, IChatResponseErrorDetails, IChatResponseProgressFileTreeData, IUsedContext, InteractiveSessionVoteDirection } from 'vs/workbench/contrib/chat/common/chatService';
+import { IChat, IChatContentReference, IChatFollowup, IChatProgress, IChatReplyFollowup, IChatResponse, IChatResponseErrorDetails, IChatResponseProgressFileTreeData, IUsedContext, InteractiveSessionVoteDirection, isIUsedContext } from 'vs/workbench/contrib/chat/common/chatService';
 
 export interface IChatRequestModel {
 	readonly id: string;
@@ -35,12 +35,14 @@ export type ResponsePart =
 			string | IMarkdownString | { treeData: IChatResponseProgressFileTreeData }
 		>;
 	}
-	| IUsedContext;
+	| IUsedContext
+	| IChatContentReference;
 
 export interface IResponse {
 	readonly value: (IMarkdownString | IPlaceholderMarkdownString | IChatResponseProgressFileTreeData)[];
+	readonly usedContext: IUsedContext | undefined;
+	readonly contentReferences: IChatContentReference[];
 	onDidChangeValue: Event<void>;
-	usedContext: IUsedContext | undefined;
 	updateContent(responsePart: ResponsePart, quiet?: boolean): void;
 	asString(): string;
 }
@@ -60,14 +62,6 @@ export interface IChatResponseModel {
 	readonly followups?: IChatFollowup[] | undefined;
 	readonly errorDetails?: IChatResponseErrorDetails;
 	setVote(vote: InteractiveSessionVoteDirection): void;
-}
-
-export function isRequest(item: unknown): item is IChatRequestModel {
-	return !!item && typeof (item as IChatRequestModel).message !== 'undefined';
-}
-
-export function isResponse(item: unknown): item is IChatResponseModel {
-	return !isRequest(item);
 }
 
 export class ChatRequestModel implements IChatRequestModel {
@@ -116,6 +110,11 @@ export class Response implements IResponse {
 	private _onDidChangeValue = new Emitter<void>();
 	public get onDidChangeValue() {
 		return this._onDidChangeValue.event;
+	}
+
+	private _contentReferences: IChatContentReference[] = [];
+	public get contentReferences(): IChatContentReference[] {
+		return this._contentReferences;
 	}
 
 	private _usedContext: IUsedContext | undefined;
@@ -190,6 +189,8 @@ export class Response implements IResponse {
 			this._updateRepr(quiet);
 		} else if ('documents' in responsePart) {
 			this._usedContext = responsePart;
+		} else if ('reference' in responsePart) {
+			this._contentReferences.push(responsePart);
 		}
 	}
 
@@ -355,6 +356,9 @@ export interface ISerializableChatRequestData {
 	followups: IChatFollowup[] | undefined;
 	isCanceled: boolean | undefined;
 	vote: InteractiveSessionVoteDirection | undefined;
+	/** For backward compat: should be optional */
+	usedContext?: IUsedContext;
+	contentReferences?: IChatContentReference[];
 }
 
 export interface IExportableChatData {
@@ -386,7 +390,10 @@ export function isSerializableSessionData(obj: unknown): obj is ISerializableCha
 	const data = obj as ISerializableChatData;
 	return isExportableSessionData(obj) &&
 		typeof data.creationDate === 'number' &&
-		typeof data.sessionId === 'string';
+		typeof data.sessionId === 'string' &&
+		obj.requests.every((request: ISerializableChatRequestData) =>
+			!request.usedContext /* for backward compat allow missing usedContext */ || isIUsedContext(request.usedContext)
+		);
 }
 
 export type IChatChangeEvent = IChatAddRequestEvent | IChatAddResponseEvent | IChatInitEvent | IChatRemoveRequestEvent;
@@ -523,12 +530,17 @@ export class ChatModel extends Disposable implements IChatModel {
 
 		try {
 			return requests.map((raw: ISerializableChatRequestData) => {
-				const parsedRequest = typeof raw.message === 'string' ? this.getParsedRequestFromString(raw.message) :
-					reviveParsedChatRequest(raw.message);
+				const parsedRequest =
+					typeof raw.message === 'string'
+						? this.getParsedRequestFromString(raw.message)
+						: reviveParsedChatRequest(raw.message);
 				const request = new ChatRequestModel(this, parsedRequest, raw.providerRequestId);
 				if (raw.response || raw.responseErrorDetails) {
 					const agent = raw.agent && this.chatAgentService.getAgents().find(a => a.id === raw.agent!.id); // TODO do something reasonable if this agent has disappeared since the last session
 					request.response = new ChatResponseModel(raw.response ?? [new MarkdownString(raw.response)], this, agent, true, raw.isCanceled, raw.vote, raw.providerRequestId, raw.responseErrorDetails, raw.followups);
+					if (raw.usedContext) { // @ulugbekna: if this's a new vscode sessions, doc versions are incorrect anyway?
+						request.response.updateContent(raw.usedContext);
+					}
 				}
 				return request;
 			});
@@ -618,7 +630,7 @@ export class ChatModel extends Disposable implements IChatModel {
 			request.response.updateContent(progress.content, quiet);
 		} else if ('placeholder' in progress || isCompleteInteractiveProgressTreeData(progress)) {
 			request.response.updateContent(progress, quiet);
-		} else if ('documents' in progress) {
+		} else if ('documents' in progress || 'reference' in progress) {
 			request.response.updateContent(progress);
 		} else {
 			request.setProviderRequestId(progress.requestId);
@@ -708,6 +720,7 @@ export class ChatModel extends Disposable implements IChatModel {
 						fullName: r.response.agent.metadata.fullName,
 						icon: r.response.agent.metadata.icon
 					} : undefined,
+					usedContext: r.response?.response.usedContext,
 				};
 			}),
 			providerId: this.providerId,
