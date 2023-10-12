@@ -362,7 +362,10 @@ export class ChatService extends Disposable implements IChatService {
 
 			const welcomeMessage = model.welcomeMessage ? undefined : await provider.provideWelcomeMessage?.(token) ?? undefined;
 			const welcomeModel = welcomeMessage && new ChatWelcomeMessageModel(
-				model, welcomeMessage.map(item => typeof item === 'string' ? new MarkdownString(item) : item as IChatReplyFollowup[]));
+				model,
+				welcomeMessage.map(item => typeof item === 'string' ? new MarkdownString(item) : item as IChatReplyFollowup[]),
+				await provider.provideSampleQuestions?.(token) ?? []
+			);
 
 			model.initialize(session, welcomeModel);
 		} catch (err) {
@@ -465,6 +468,8 @@ export class ChatService extends Disposable implements IChatService {
 					this.trace('sendRequest', `Provider returned documents for session ${model.sessionId}:\n ${JSON.stringify(progress.documents, null, '\t')}`);
 				} else if ('reference' in progress) {
 					this.trace('sendRequest', `Provider returned a reference for session ${model.sessionId}:\n ${JSON.stringify(progress.reference, null, '\t')}`);
+				} else if ('inlineReference' in progress) {
+					this.trace('sendRequest', `Provider returned an inline reference for session ${model.sessionId}:\n ${JSON.stringify(progress.inlineReference, null, '\t')}`);
 				} else {
 					this.trace('sendRequest', `Provider returned id for session ${model.sessionId}, ${progress.requestId}`);
 				}
@@ -674,7 +679,9 @@ export class ChatService extends Disposable implements IChatService {
 			model.acceptResponseProgress(request, { content: response.message });
 		} else {
 			for (const part of response.message) {
-				const progress = isMarkdownString(part) ? { content: part.value } : { treeData: part };
+				const progress = 'inlineReference' in part ? part :
+					isMarkdownString(part) ? { content: part.value } :
+						{ treeData: part };
 				model.acceptResponseProgress(request, progress, true);
 			}
 		}
