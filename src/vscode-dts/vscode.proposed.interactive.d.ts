@@ -108,7 +108,7 @@ declare module 'vscode' {
 
 	export interface InteractiveRequest {
 		session: InteractiveSession;
-		message: string | InteractiveSessionReplyFollowup;
+		message: string;
 	}
 
 	export interface InteractiveResponseErrorDetails {
