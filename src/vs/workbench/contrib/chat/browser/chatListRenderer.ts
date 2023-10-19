@@ -353,6 +353,7 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 						providerId: element.providerId,
 						agentId: element.agent?.id,
 						sessionId: element.sessionId,
+						requestId: element.requestId,
 						action: {
 							kind: 'command',
 							command: followup,
@@ -620,8 +621,8 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 		});
 		const container = $('.chat-used-context', undefined, buttonElement);
 		collapseButton.label = referencesLabel;
-		collapseButton.element.prepend(iconElement);
-
+		collapseButton.element.append(iconElement);
+		this.updateAriaLabel(collapseButton.element, referencesLabel, element.usedReferencesExpanded);
 		container.classList.toggle('chat-used-context-collapsed', !element.usedReferencesExpanded);
 		listDisposables.add(collapseButton.onDidClick(() => {
 			iconElement.classList.remove(...ThemeIcon.asClassNameArray(icon(element)));
@@ -629,6 +630,7 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 			iconElement.classList.add(...ThemeIcon.asClassNameArray(icon(element)));
 			container.classList.toggle('chat-used-context-collapsed', !element.usedReferencesExpanded);
 			this._onDidChangeItemHeight.fire({ element, height: templateData.rowContainer.offsetHeight });
+			this.updateAriaLabel(collapseButton.element, referencesLabel, element.usedReferencesExpanded);
 		}));
 
 		const ref = listDisposables.add(this._contentReferencesListPool.get());
@@ -662,6 +664,10 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 				listDisposables.dispose();
 			}
 		};
+	}
+
+	private updateAriaLabel(element: HTMLElement, label: string, expanded?: boolean): void {
+		element.ariaLabel = expanded ? localize('usedReferencesExpanded', "{0}, expanded", label) : localize('usedReferencesCollapsed', "{0}, collapsed", label);
 	}
 
 	private renderPlaceholder(markdown: IMarkdownString, templateData: IChatListItemTemplate): IMarkdownRenderResult {

@@ -7,8 +7,10 @@ import { DeferredPromise, raceCancellation } from 'vs/base/common/async';
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { toErrorMessage } from 'vs/base/common/errorMessage';
 import { Emitter } from 'vs/base/common/event';
+import { StopWatch } from 'vs/base/common/stopwatch';
 import { assertType } from 'vs/base/common/types';
 import { URI } from 'vs/base/common/uri';
+import { localize } from 'vs/nls';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
 import { ILogService } from 'vs/platform/log/common/log';
 import { Progress } from 'vs/platform/progress/common/progress';
@@ -30,6 +32,7 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 	private readonly _proxy: MainThreadChatAgentsShape2;
 
 	private readonly _previousResultMap: Map<string, vscode.ChatAgentResult2> = new Map();
+	private readonly _resultsBySessionAndRequestId: Map<string, Map<string, vscode.ChatAgentResult2>> = new Map();
 
 	constructor(
 		mainContext: IMainContext,
@@ -48,7 +51,11 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 		return agent.apiAgent;
 	}
 
-	async $invokeAgent(handle: number, sessionId: string, requestId: number, request: IChatAgentRequest, context: { history: IChatMessage[] }, token: CancellationToken): Promise<IChatAgentResult | undefined> {
+	async $invokeAgent(handle: number, sessionId: string, requestId: string, request: IChatAgentRequest, context: { history: IChatMessage[] }, token: CancellationToken): Promise<IChatAgentResult | undefined> {
+		// Clear the previous result so that $acceptFeedback or $acceptAction during a request will be ignored.
+		// We may want to support sending those during a request.
+		this._previousResultMap.delete(sessionId);
+
 		const agent = this._agents.get(handle);
 		if (!agent) {
 			throw new Error(`[CHAT](${handle}) CANNOT invoke agent because the agent is not registered`);
@@ -70,6 +77,8 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 			? await agent.validateSlashCommand(request.command)
 			: undefined;
 
+		const stopWatch = StopWatch.create(false);
+		let firstProgress: number | undefined;
 		try {
 			const task = agent.invoke(
 				{
@@ -78,10 +87,25 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 					slashCommand
 				},
 				{ history: context.history.map(typeConvert.ChatMessage.to) },
-				new Progress<vscode.ChatAgentProgress>(p => {
+				new Progress<vscode.ChatAgentProgress>(progress => {
 					throwIfDone();
-					const convertedProgress = typeConvert.ChatResponseProgress.from(p);
-					this._proxy.$handleProgressChunk(requestId, convertedProgress);
+					if (typeof firstProgress === 'undefined') {
+						firstProgress = stopWatch.elapsed();
+					}
+
+					const convertedProgress = typeConvert.ChatResponseProgress.from(progress);
+					if ('placeholder' in progress && 'resolvedContent' in progress) {
+						const resolvedContent = Promise.all([this._proxy.$handleProgressChunk(requestId, convertedProgress), progress.resolvedContent]);
+						raceCancellation(resolvedContent, token).then(res => {
+							if (!res) {
+								return; /* Cancelled */
+							}
+							const [progressHandle, progressContent] = res;
+							this._proxy.$handleProgressChunk(requestId, progressContent, progressHandle ?? undefined);
+						});
+					} else {
+						this._proxy.$handleProgressChunk(requestId, convertedProgress);
+					}
 				}),
 				token
 			);
@@ -89,7 +113,15 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 			return await raceCancellation(Promise.resolve(task).then((result) => {
 				if (result) {
 					this._previousResultMap.set(sessionId, result);
-					return { errorDetails: result.errorDetails }; // TODO timings here
+					let sessionResults = this._resultsBySessionAndRequestId.get(sessionId);
+					if (!sessionResults) {
+						sessionResults = new Map();
+						this._resultsBySessionAndRequestId.set(sessionId, sessionResults);
+					}
+					sessionResults.set(requestId, result);
+
+					const timings = { firstProgress: firstProgress, totalElapsed: stopWatch.elapsed() };
+					return { errorDetails: result.errorDetails, timings };
 				} else {
 					this._previousResultMap.delete(sessionId);
 				}
@@ -99,11 +131,7 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 
 		} catch (e) {
 			this._logService.error(e, agent.extension);
-			return {
-				errorDetails: {
-					message: toErrorMessage(e)
-				}
-			};
+			return { errorDetails: { message: localize('errorResponse', "Error from provider: {0}", toErrorMessage(e)), responseIsIncomplete: true } };
 
 		} finally {
 			done = true;
@@ -113,6 +141,7 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 
 	$releaseSession(sessionId: string): void {
 		this._previousResultMap.delete(sessionId);
+		this._resultsBySessionAndRequestId.delete(sessionId);
 	}
 
 	async $provideSlashCommands(handle: number, token: CancellationToken): Promise<IChatAgentCommand[]> {
@@ -138,12 +167,12 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 		return agent.provideFollowups(result, token);
 	}
 
-	$acceptFeedback(handle: number, sessionId: string, vote: InteractiveSessionVoteDirection): void {
+	$acceptFeedback(handle: number, sessionId: string, requestId: string, vote: InteractiveSessionVoteDirection): void {
 		const agent = this._agents.get(handle);
 		if (!agent) {
 			return;
 		}
-		const result = this._previousResultMap.get(sessionId);
+		const result = this._resultsBySessionAndRequestId.get(sessionId)?.get(requestId);
 		if (!result) {
 			return;
 		}
@@ -160,12 +189,12 @@ export class ExtHostChatAgents2 implements ExtHostChatAgentsShape2 {
 		agent.acceptFeedback(Object.freeze({ result, kind }));
 	}
 
-	$acceptAction(handle: number, sessionId: string, action: IChatUserActionEvent): void {
+	$acceptAction(handle: number, sessionId: string, requestId: string, action: IChatUserActionEvent): void {
 		const agent = this._agents.get(handle);
 		if (!agent) {
 			return;
 		}
-		const result = this._previousResultMap.get(sessionId);
+		const result = this._resultsBySessionAndRequestId.get(sessionId)?.get(requestId);
 		if (!result) {
 			return;
 		}
@@ -291,7 +320,6 @@ class ExtHostChatAgent {
 				that._iconPath = v;
 				updateMetadataSoon();
 			},
-			// onDidPerformAction
 			get slashCommandProvider() {
 				return that._slashCommandProvider;
 			},

@@ -44,6 +44,7 @@ export class ChatViewPane extends ViewPane implements IChatViewPane {
 	private modelDisposables = this._register(new DisposableStore());
 	private memento: Memento;
 	private viewState: IViewPaneState;
+	private didProviderRegistrationFail = false;
 
 	constructor(
 		private readonly chatViewOptions: IChatViewOptions,
@@ -66,6 +67,11 @@ export class ChatViewPane extends ViewPane implements IChatViewPane {
 		// View state for the ViewPane is currently global per-provider basically, but some other strictly per-model state will require a separate memento.
 		this.memento = new Memento('interactive-session-view-' + this.chatViewOptions.providerId, this.storageService);
 		this.viewState = this.memento.getMemento(StorageScope.WORKSPACE, StorageTarget.MACHINE) as IViewPaneState;
+		this._register(this.chatService.onDidRegisterProvider(({ providerId }) => {
+			if (providerId === this.chatViewOptions.providerId && !this._widget?.viewModel) {
+				this.updateModel();
+			}
+		}));
 	}
 
 	private updateModel(model?: IChatModel | undefined): void {
@@ -80,6 +86,11 @@ export class ChatViewPane extends ViewPane implements IChatViewPane {
 
 		this._widget.setModel(model, { ...this.viewState });
 		this.viewState.sessionId = model.sessionId;
+	}
+
+	override shouldShowWelcome(): boolean {
+		const noPersistedSessions = !this.chatService.hasSessions(this.chatViewOptions.providerId);
+		return !this._widget?.viewModel && (noPersistedSessions || this.didProviderRegistrationFail);
 	}
 
 	protected override renderBody(parent: HTMLElement): void {
@@ -111,6 +122,16 @@ export class ChatViewPane extends ViewPane implements IChatViewPane {
 			} else {
 				sessionId = this.viewState.sessionId;
 			}
+
+			// Render the welcome view if this session gets disposed at any point,
+			// including if the provider registration fails
+			const disposeListener = sessionId ? this._register(this.chatService.onDidDisposeSession((e) => {
+				if (e.sessionId === sessionId) {
+					this.didProviderRegistrationFail = true;
+					disposeListener?.dispose();
+					this._onDidChangeViewWelcomeState.fire();
+				}
+			})) : undefined;
 
 			const initialModel = sessionId ? this.chatService.getOrRestoreSession(sessionId) : undefined;
 			this.updateModel(initialModel);
