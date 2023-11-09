@@ -7,7 +7,7 @@ import * as browser from 'vs/base/browser/browser';
 import { BrowserFeatures } from 'vs/base/browser/canIUse';
 import { IKeyboardEvent, StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IMouseEvent, StandardMouseEvent } from 'vs/base/browser/mouseEvent';
-import { TimeoutTimer } from 'vs/base/common/async';
+import { AbstractIdleValue, IntervalTimer, TimeoutTimer, _runWhenIdle, IdleDeadline } from 'vs/base/common/async';
 import { onUnexpectedError } from 'vs/base/common/errors';
 import * as event from 'vs/base/common/event';
 import * as dompurify from 'vs/base/browser/dompurify/dompurify';
@@ -17,7 +17,7 @@ import { FileAccess, RemoteAuthorities, Schemas } from 'vs/base/common/network';
 import * as platform from 'vs/base/common/platform';
 import { URI } from 'vs/base/common/uri';
 import { hash } from 'vs/base/common/hash';
-import { CodeWindow, mainWindow, $window } from 'vs/base/browser/window';
+import { CodeWindow, mainWindow } from 'vs/base/browser/window';
 
 interface IRegisteredCodeWindow {
 	readonly window: CodeWindow;
@@ -178,6 +178,41 @@ export function addDisposableGenericMouseUpListener(node: EventTarget, handler: 
 	return addDisposableListener(node, platform.isIOS && BrowserFeatures.pointerEvents ? EventType.POINTER_UP : EventType.MOUSE_UP, handler, useCapture);
 }
 
+
+/**
+ * Execute the callback the next time the browser is idle, returning an
+ * {@link IDisposable} that will cancel the callback when disposed. This wraps
+ * [requestIdleCallback] so it will fallback to [setTimeout] if the environment
+ * doesn't support it.
+ *
+ * @param targetWindow The window for which to run the idle callback
+ * @param callback The callback to run when idle, this includes an
+ * [IdleDeadline] that provides the time alloted for the idle callback by the
+ * browser. Not respecting this deadline will result in a degraded user
+ * experience.
+ * @param timeout A timeout at which point to queue no longer wait for an idle
+ * callback but queue it on the regular event loop (like setTimeout). Typically
+ * this should not be used.
+ *
+ * [IdleDeadline]: https://developer.mozilla.org/en-US/docs/Web/API/IdleDeadline
+ * [requestIdleCallback]: https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback
+ * [setTimeout]: https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout
+ */
+export function runWhenWindowIdle(targetWindow: Window | typeof globalThis, callback: (idle: IdleDeadline) => void, timeout?: number): IDisposable {
+	return _runWhenIdle(targetWindow, callback, timeout);
+}
+
+/**
+ * An implementation of the "idle-until-urgent"-strategy as introduced
+ * here: https://philipwalton.com/articles/idle-until-urgent/
+ */
+export class WindowIdleValue<T> extends AbstractIdleValue<T> {
+	constructor(targetWindow: Window | typeof globalThis, executor: () => T) {
+		super(targetWindow, executor);
+	}
+}
+
+
 /**
  * Schedule a callback to be run at the next animation frame.
  * This allows multiple parties to register callbacks that should run at the next animation frame.
@@ -192,6 +227,27 @@ export let runAtThisOrScheduleAtNextAnimationFrame: (targetWindow: Window, runne
  * @return token that can be used to cancel the scheduled runner.
  */
 export let scheduleAtNextAnimationFrame: (targetWindow: Window, runner: () => void, priority?: number) => IDisposable;
+
+export function disposableWindowInterval(targetWindow: Window & typeof globalThis, handler: () => void | boolean /* stop interval */ | Promise<unknown>, interval: number, iterations?: number): IDisposable {
+	let iteration = 0;
+	const timer = targetWindow.setInterval(() => {
+		iteration++;
+		if ((typeof iterations === 'number' && iteration >= iterations) || handler() === true) {
+			disposable.dispose();
+		}
+	}, interval);
+	const disposable = toDisposable(() => {
+		targetWindow.clearInterval(timer);
+	});
+	return disposable;
+}
+
+export class WindowIntervalTimer extends IntervalTimer {
+
+	override cancelAndSet(runner: () => void, interval: number, targetWindow: Window & typeof globalThis): void {
+		return super.cancelAndSet(runner, interval, targetWindow);
+	}
+}
 
 class AnimationFrameQueueItem implements IDisposable {
 
@@ -1434,7 +1490,7 @@ export function windowOpenNoOpener(url: string): void {
 	// See https://developer.mozilla.org/en-US/docs/Web/API/Window/open#noopener
 	// However, this also doesn't allow us to realize if the browser blocked
 	// the creation of the window.
-	$window.open(url, '_blank', 'noopener');
+	mainWindow.open(url, '_blank', 'noopener');
 }
 
 /**
@@ -1450,9 +1506,9 @@ export function windowOpenNoOpener(url: string): void {
  */
 const popupWidth = 780, popupHeight = 640;
 export function windowOpenPopup(url: string): void {
-	const left = Math.floor($window.screenLeft + $window.innerWidth / 2 - popupWidth / 2);
-	const top = Math.floor($window.screenTop + $window.innerHeight / 2 - popupHeight / 2);
-	$window.open(
+	const left = Math.floor(mainWindow.screenLeft + mainWindow.innerWidth / 2 - popupWidth / 2);
+	const top = Math.floor(mainWindow.screenTop + mainWindow.innerHeight / 2 - popupHeight / 2);
+	mainWindow.open(
 		url,
 		'_blank',
 		`width=${popupWidth},height=${popupHeight},top=${top},left=${left}`
@@ -1475,7 +1531,7 @@ export function windowOpenPopup(url: string): void {
  * @returns boolean indicating if the {@link window.open} call succeeded
  */
 export function windowOpenWithSuccess(url: string, noOpener = true): boolean {
-	const newTab = $window.open();
+	const newTab = mainWindow.open();
 	if (newTab) {
 		if (noOpener) {
 			// see `windowOpenNoOpener` for details on why this is important
@@ -1611,10 +1667,10 @@ export interface IDetectedFullscreen {
 	guess: boolean;
 }
 
-export function detectFullscreen(): IDetectedFullscreen | null {
+export function detectFullscreen(targetWindow: Window): IDetectedFullscreen | null {
 
 	// Browser fullscreen: use DOM APIs to detect
-	if ($window.document.fullscreenElement || (<any>$window.document).webkitFullscreenElement || (<any>$window.document).webkitIsFullScreen) {
+	if (targetWindow.document.fullscreenElement || (<any>targetWindow.document).webkitFullscreenElement || (<any>targetWindow.document).webkitIsFullScreen) {
 		return { mode: DetectedFullscreenMode.DOCUMENT, guess: false };
 	}
 
@@ -1623,7 +1679,7 @@ export function detectFullscreen(): IDetectedFullscreen | null {
 	// height and comparing that to window height, we can guess
 	// it though.
 
-	if ($window.innerHeight === $window.screen.height) {
+	if (targetWindow.innerHeight === targetWindow.screen.height) {
 		// if the height of the window matches the screen height, we can
 		// safely assume that the browser is fullscreen because no browser
 		// chrome is taking height away (e.g. like toolbars).
@@ -1632,7 +1688,7 @@ export function detectFullscreen(): IDetectedFullscreen | null {
 
 	if (platform.isMacintosh || platform.isLinux) {
 		// macOS and Linux do not properly report `innerHeight`, only Windows does
-		if ($window.outerHeight === $window.screen.height && $window.outerWidth === $window.screen.width) {
+		if (targetWindow.outerHeight === targetWindow.screen.height && targetWindow.outerWidth === targetWindow.screen.width) {
 			// if the height of the browser matches the screen height, we can
 			// only guess that we are in fullscreen. It is also possible that
 			// the user has turned off taskbars in the OS and the browser is
