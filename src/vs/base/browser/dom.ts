@@ -133,9 +133,9 @@ export interface IAddStandardDisposableListenerSignature {
 	(node: HTMLElement, type: 'pointerup', handler: (event: PointerEvent) => void, useCapture?: boolean): IDisposable;
 	(node: HTMLElement, type: string, handler: (event: any) => void, useCapture?: boolean): IDisposable;
 }
-function _wrapAsStandardMouseEvent(handler: (e: IMouseEvent) => void): (e: MouseEvent) => void {
+function _wrapAsStandardMouseEvent(targetWindow: Window, handler: (e: IMouseEvent) => void): (e: MouseEvent) => void {
 	return function (e: MouseEvent) {
-		return handler(new StandardMouseEvent(e));
+		return handler(new StandardMouseEvent(targetWindow, e));
 	};
 }
 function _wrapAsStandardKeyboardEvent(handler: (e: IKeyboardEvent) => void): (e: KeyboardEvent) => void {
@@ -147,7 +147,7 @@ export const addStandardDisposableListener: IAddStandardDisposableListenerSignat
 	let wrapHandler = handler;
 
 	if (type === 'click' || type === 'mousedown') {
-		wrapHandler = _wrapAsStandardMouseEvent(handler);
+		wrapHandler = _wrapAsStandardMouseEvent(getWindow(node), handler);
 	} else if (type === 'keydown' || type === 'keypress' || type === 'keyup') {
 		wrapHandler = _wrapAsStandardKeyboardEvent(handler);
 	}
@@ -156,13 +156,13 @@ export const addStandardDisposableListener: IAddStandardDisposableListenerSignat
 };
 
 export const addStandardDisposableGenericMouseDownListener = function addStandardDisposableListener(node: HTMLElement, handler: (event: any) => void, useCapture?: boolean): IDisposable {
-	const wrapHandler = _wrapAsStandardMouseEvent(handler);
+	const wrapHandler = _wrapAsStandardMouseEvent(getWindow(node), handler);
 
 	return addDisposableGenericMouseDownListener(node, wrapHandler, useCapture);
 };
 
 export const addStandardDisposableGenericMouseUpListener = function addStandardDisposableListener(node: HTMLElement, handler: (event: any) => void, useCapture?: boolean): IDisposable {
-	const wrapHandler = _wrapAsStandardMouseEvent(handler);
+	const wrapHandler = _wrapAsStandardMouseEvent(getWindow(node), handler);
 
 	return addDisposableGenericMouseUpListener(node, wrapHandler, useCapture);
 };
@@ -2031,10 +2031,12 @@ export function getCookieValue(name: string): string | undefined {
 }
 
 export interface IDragAndDropObserverCallbacks {
-	readonly onDragEnter: (e: DragEvent) => void;
-	readonly onDragLeave: (e: DragEvent) => void;
-	readonly onDrop: (e: DragEvent) => void;
-	readonly onDragEnd: (e: DragEvent) => void;
+	readonly onDragEnter?: (e: DragEvent) => void;
+	readonly onDragLeave?: (e: DragEvent) => void;
+	readonly onDrop?: (e: DragEvent) => void;
+	readonly onDragEnd?: (e: DragEvent) => void;
+	readonly onDragStart?: (e: DragEvent) => void;
+	readonly onDrag?: (e: DragEvent) => void;
 	readonly onDragOver?: (e: DragEvent, dragDuration: number) => void;
 }
 
@@ -2056,11 +2058,23 @@ export class DragAndDropObserver extends Disposable {
 	}
 
 	private registerListeners(): void {
+		if (this.callbacks.onDragStart) {
+			this._register(addDisposableListener(this.element, EventType.DRAG_START, (e: DragEvent) => {
+				this.callbacks.onDragStart?.(e);
+			}));
+		}
+
+		if (this.callbacks.onDrag) {
+			this._register(addDisposableListener(this.element, EventType.DRAG, (e: DragEvent) => {
+				this.callbacks.onDrag?.(e);
+			}));
+		}
+
 		this._register(addDisposableListener(this.element, EventType.DRAG_ENTER, (e: DragEvent) => {
 			this.counter++;
 			this.dragStartTime = e.timeStamp;
 
-			this.callbacks.onDragEnter(e);
+			this.callbacks.onDragEnter?.(e);
 		}));
 
 		this._register(addDisposableListener(this.element, EventType.DRAG_OVER, (e: DragEvent) => {
@@ -2075,7 +2089,7 @@ export class DragAndDropObserver extends Disposable {
 			if (this.counter === 0) {
 				this.dragStartTime = 0;
 
-				this.callbacks.onDragLeave(e);
+				this.callbacks.onDragLeave?.(e);
 			}
 		}));
 
@@ -2083,14 +2097,14 @@ export class DragAndDropObserver extends Disposable {
 			this.counter = 0;
 			this.dragStartTime = 0;
 
-			this.callbacks.onDragEnd(e);
+			this.callbacks.onDragEnd?.(e);
 		}));
 
 		this._register(addDisposableListener(this.element, EventType.DROP, (e: DragEvent) => {
 			this.counter = 0;
 			this.dragStartTime = 0;
 
-			this.callbacks.onDrop(e);
+			this.callbacks.onDrop?.(e);
 		}));
 	}
 }
