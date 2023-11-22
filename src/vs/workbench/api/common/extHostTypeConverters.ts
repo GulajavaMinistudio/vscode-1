@@ -2302,9 +2302,9 @@ export namespace ChatResponseProgress {
 			checkProposedApiEnabled(extension, 'chatAgents2Additions');
 			return { content: MarkdownString.from(progress.markdownContent), kind: 'markdownContent' };
 		} else if ('content' in progress) {
-			if ('vulnerability' in progress && progress.vulnerability) {
+			if ('vulnerabilities' in progress && progress.vulnerabilities) {
 				checkProposedApiEnabled(extension, 'chatAgents2Additions');
-				return { content: progress.content, title: progress.vulnerability.title, description: progress.vulnerability!.description, kind: 'vulnerability' };
+				return { content: progress.content, vulnerabilities: progress.vulnerabilities, kind: 'vulnerability' };
 			}
 
 			if (typeof progress.content === 'string') {
@@ -2356,9 +2356,9 @@ export namespace ChatResponseProgress {
 
 
 export namespace TerminalQuickFix {
-	export function from(quickFix: vscode.TerminalQuickFixExecuteTerminalCommand | vscode.TerminalQuickFixOpener | vscode.Command, converter: Command.ICommandsConverter, disposables: DisposableStore): extHostProtocol.ITerminalQuickFixExecuteTerminalCommandDto | extHostProtocol.ITerminalQuickFixOpenerDto | extHostProtocol.ICommandDto | undefined {
+	export function from(quickFix: vscode.TerminalQuickFixTerminalCommand | vscode.TerminalQuickFixOpener | vscode.Command, converter: Command.ICommandsConverter, disposables: DisposableStore): extHostProtocol.ITerminalQuickFixTerminalCommandDto | extHostProtocol.ITerminalQuickFixOpenerDto | extHostProtocol.ICommandDto | undefined {
 		if ('terminalCommand' in quickFix) {
-			return { terminalCommand: quickFix.terminalCommand };
+			return { terminalCommand: quickFix.terminalCommand, shouldExecute: quickFix.shouldExecute };
 		}
 		if ('uri' in quickFix) {
 			return { uri: quickFix.uri };
