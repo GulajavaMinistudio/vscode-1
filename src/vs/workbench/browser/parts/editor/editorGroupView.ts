@@ -172,7 +172,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 			this.scopedContextKeyService = this._register(this.contextKeyService.createScoped(this.element));
 
 			// Container
-			this.element.classList.add('editor-group-container');
+			this.element.classList.add(...coalesce(['editor-group-container', this.model.isLocked ? 'locked' : undefined]));
 
 			// Container listeners
 			this.registerContainerListeners();
@@ -547,6 +547,10 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		this._onDidModelChange.fire(e);
 
 		// Handle within
+
+		if (e.kind === GroupModelChangeKind.GROUP_LOCKED) {
+			this.element.classList.toggle('locked', this.isLocked);
+		}
 
 		if (!e.editor) {
 			return;
@@ -1574,7 +1578,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 
 			// Auto-save on focus change: save, because a dialog would steal focus
 			// (see https://github.com/microsoft/vscode/issues/108752)
-			if (this.filesConfigurationService.getAutoSaveMode() === AutoSaveMode.ON_FOCUS_CHANGE) {
+			if (this.filesConfigurationService.getAutoSaveMode(editor) === AutoSaveMode.ON_FOCUS_CHANGE) {
 				autoSave = true;
 				confirmation = ConfirmResult.SAVE;
 				saveReason = SaveReason.FOCUS_CHANGE;
@@ -1583,7 +1587,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 			// Auto-save on window change: save, because on Windows and Linux, a
 			// native dialog triggers the window focus change
 			// (see https://github.com/microsoft/vscode/issues/134250)
-			else if ((isNative && (isWindows || isLinux)) && this.filesConfigurationService.getAutoSaveMode() === AutoSaveMode.ON_WINDOW_CHANGE) {
+			else if ((isNative && (isWindows || isLinux)) && this.filesConfigurationService.getAutoSaveMode(editor) === AutoSaveMode.ON_WINDOW_CHANGE) {
 				autoSave = true;
 				confirmation = ConfirmResult.SAVE;
 				saveReason = SaveReason.WINDOW_CHANGE;
