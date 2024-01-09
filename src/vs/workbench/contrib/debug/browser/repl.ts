@@ -37,7 +37,7 @@ import { ILanguageFeaturesService } from 'vs/editor/common/services/languageFeat
 import { IModelService } from 'vs/editor/common/services/model';
 import { ITextResourcePropertiesService } from 'vs/editor/common/services/textResourceConfiguration';
 import { SuggestController } from 'vs/editor/contrib/suggest/browser/suggestController';
-import { localize } from 'vs/nls';
+import { localize, localize2 } from 'vs/nls';
 import { createAndFillInContextMenuActions } from 'vs/platform/actions/browser/menuEntryActionViewItem';
 import { Action2, IMenu, IMenuService, MenuId, registerAction2 } from 'vs/platform/actions/common/actions';
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
@@ -69,7 +69,7 @@ import { Variable } from 'vs/workbench/contrib/debug/common/debugModel';
 import { ReplEvaluationResult, ReplGroup } from 'vs/workbench/contrib/debug/common/replModel';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { registerNavigableContainer } from 'vs/workbench/browser/actions/widgetNavigationCommands';
-import { AccessibleNotificationEvent, IAccessibleNotificationService } from 'vs/platform/accessibility/common/accessibility';
+import { AudioCue, IAudioCueService } from 'vs/platform/audioCues/browser/audioCueService';
 
 const $ = dom.$;
 
@@ -971,7 +971,7 @@ registerAction2(class extends ViewAction<Repl> {
 		super({
 			id: 'workbench.debug.panel.action.clearReplAction',
 			viewId: REPL_VIEW_ID,
-			title: { value: localize('clearRepl', "Clear Console"), original: 'Clear Console' },
+			title: localize2('clearRepl', 'Clear Console'),
 			f1: true,
 			icon: debugConsoleClearAll,
 			menu: [{
@@ -988,9 +988,9 @@ registerAction2(class extends ViewAction<Repl> {
 	}
 
 	runInView(_accessor: ServicesAccessor, view: Repl): void {
-		const accessibleNotificationService = _accessor.get(IAccessibleNotificationService);
+		const audioCueService = _accessor.get(IAudioCueService);
 		view.clearRepl();
-		accessibleNotificationService.notify(AccessibleNotificationEvent.Clear);
+		audioCueService.playAudioCue(AudioCue.clear);
 	}
 });
 
