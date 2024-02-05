@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type * as DOM from 'vs/base/browser/window';
-import { promiseWithResolvers } from 'vs/base/common/async';
 import type { Event } from 'vs/base/common/event';
 import type { IDisposable } from 'vs/base/common/lifecycle';
 import type * as webviewMessages from 'vs/workbench/contrib/notebook/browser/view/renderers/webviewMessages';
@@ -96,6 +95,16 @@ async function webviewPreloads(ctx: PreloadContext) {
 	const isChrome = (userAgent.indexOf('Chrome') >= 0);
 	const textEncoder = new TextEncoder();
 	const textDecoder = new TextDecoder();
+
+	function promiseWithResolvers<T>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void; reject: (err?: any) => void } {
+		let resolve: (value: T | PromiseLike<T>) => void;
+		let reject: (reason?: any) => void;
+		const promise = new Promise<T>((res, rej) => {
+			resolve = res;
+			reject = rej;
+		});
+		return { promise, resolve: resolve!, reject: reject! };
+	}
 
 	let currentOptions = ctx.options;
 	const isWorkspaceTrusted = ctx.isWorkspaceTrusted;
@@ -1394,21 +1403,36 @@ async function webviewPreloads(ctx: PreloadContext) {
 		}
 
 		try {
-			const image = $window.document.getElementById(outputId)?.querySelector('img')
-				?? $window.document.getElementById(altOutputId)?.querySelector('img');
+			const outputElement = $window.document.getElementById(outputId)
+				?? $window.document.getElementById(altOutputId);
+
+			let image = outputElement?.querySelector('img');
+
+			if (!image) {
+				const svgImage = outputElement?.querySelector('svg.output-image') ??
+					outputElement?.querySelector('div.svgContainerStyle > svg');
+
+				if (svgImage) {
+					image = new Image();
+					image.src = 'data:image/svg+xml,' + encodeURIComponent(svgImage.outerHTML);
+				}
+			}
+
 			if (image) {
+				const imageToCopy = image;
 				await navigator.clipboard.write([new ClipboardItem({
 					'image/png': new Promise((resolve) => {
 						const canvas = document.createElement('canvas');
-						if (canvas !== null) {
-							canvas.width = image.naturalWidth;
-							canvas.height = image.naturalHeight;
-							const context = canvas.getContext('2d');
-							context?.drawImage(image, 0, 0);
-						}
+						canvas.width = imageToCopy.naturalWidth;
+						canvas.height = imageToCopy.naturalHeight;
+						const context = canvas.getContext('2d');
+						context!.drawImage(imageToCopy, 0, 0);
+
 						canvas.toBlob((blob) => {
 							if (blob) {
 								resolve(blob);
+							} else {
+								console.error('No blob data to write to clipboard');
 							}
 							canvas.remove();
 						}, 'image/png');

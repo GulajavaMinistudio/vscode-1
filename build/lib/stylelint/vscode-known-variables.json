@@ -635,6 +635,7 @@
 		"--vscode-tab-activeForeground",
 		"--vscode-tab-activeModifiedBorder",
 		"--vscode-tab-border",
+		"--vscode-tab-dragAndDropBorder",
 		"--vscode-tab-hoverBackground",
 		"--vscode-tab-hoverBorder",
 		"--vscode-tab-hoverForeground",
@@ -746,7 +747,8 @@
 		"--vscode-widget-border",
 		"--vscode-widget-shadow",
 		"--vscode-window-activeBorder",
-		"--vscode-window-inactiveBorder"
+		"--vscode-window-inactiveBorder",
+		"--vscode-multiDiffEditor-headerBackground"
 	],
 	"others": [
 		"--background-dark",
