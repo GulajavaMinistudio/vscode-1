@@ -17,7 +17,7 @@ declare module 'vscode' {
 		/**
 		 * The content that was received from the chat agent. Only the progress parts that represent actual content (not metadata) are represented.
 		 */
-		response: ChatAgentContentProgress[];
+		response: (ChatAgentContentProgress | ChatResponseTextPart | ChatResponseMarkdownPart | ChatResponseFileTreePart | ChatResponseAnchorPart)[];
 
 		/**
 		 * The result that was received from the chat agent.
@@ -67,6 +67,7 @@ declare module 'vscode' {
 
 		// TODO@API
 		// add CATCH-all signature [name:string]: string|boolean|number instead of `T extends...`
+		// readonly metadata: { readonly [key: string]: any };
 	}
 
 	/**
@@ -277,37 +278,132 @@ declare module 'vscode' {
 		variables: Record<string, ChatVariableValue[]>;
 	}
 
-	export interface ChatAgentResponseItemMetadata {
-		title: string;
-		// annotations: any[]; // future OffsetbasedAnnotation and Annotation
-	}
-
 	export interface ChatAgentResponseStream {
 
-		// RENDERED
+		/**
+		 * Push a text part to this stream. Short-hand for
+		 * `push(new ChatResponseTextPart(value))`.
+		 *
+		 * @see {@link ChatAgentResponseStream.push}
+		 * @param value A plain text value.
+		 * @returns This stream.
+		 */
+		text(value: string): ChatAgentResponseStream;
 
-		text(value: string, meta?: ChatAgentResponseItemMetadata): ChatAgentResponseStream;
+		/**
+		 * Push a markdown part to this stream. Short-hand for
+		 * `push(new ChatResponseMarkdownPart(value))`.
+		 *
+		 * @see {@link ChatAgentResponseStream.push}
+		 * @param value A markdown string or a string that should be interpreted as markdown.
+		 * @returns This stream.
+		 */
+		markdown(value: string | MarkdownString): ChatAgentResponseStream;
 
-		markdown(value: string | MarkdownString, meta?: ChatAgentResponseItemMetadata): ChatAgentResponseStream;
+		/**
+		 * Push an anchor part to this stream. Short-hand for
+		 * `push(new ChatResponseAnchorPart(value, title))`.
+		 *
+		 * @param value A uri or location
+		 * @param title An optional title that is rendered with value
+		 * @returns This stream.
+		 */
+		anchor(value: Uri | Location, title?: string): ChatAgentResponseStream;
 
-		files(value: ChatAgentFileTreeData, meta?: ChatAgentResponseItemMetadata): ChatAgentResponseStream;
+		/**
+		 * Push a filetree part to this stream. Short-hand for
+		 * `push(new ChatResponseFileTreePart(value))`.
+		 *
+		 * @param value File tree data.
+		 * @param baseUri The base uri to which this file tree is relative to.
+		 * @returns This stream.
+		 */
+		filetree(value: ChatResponseFileTree[], baseUri: Uri): ChatAgentResponseStream;
 
-		anchor(value: Uri | Location, meta?: ChatAgentResponseItemMetadata): ChatAgentResponseStream;
-
-		// META
-
+		/**
+		 * Push a progress part to this stream. Short-hand for
+		 * `push(new ChatResponseProgressPart(value))`.
+		 *
+		 * @param value
+		 * @returns This stream.
+		 */
+		// TODO@API is this always inline or not
+		// TODO@API is this markdown or string?
 		// TODO@API this influences the rendering, it inserts new lines which is likely a bug
 		progress(value: string): ChatAgentResponseStream;
 
+		/**
+		 * Push a reference to this stream. Short-hand for
+		 * `push(new ChatResponseReferencePart(value))`.
+		 *
+		 * *Note* that the reference is not rendered inline with the response.
+		 *
+		 * @param value A uri or location
+		 * @returns This stream.
+		 */
 		// TODO@API support non-file uris, like http://example.com
 		// TODO@API support mapped edits
 		reference(value: Uri | Location): ChatAgentResponseStream;
+
+		/**
+		 * Pushes a part to this stream.
+		 *
+		 * @param part A response part, rendered or metadata
+		 */
+		push(part: ChatResponsePart): ChatAgentResponseStream;
 
 		/**
 		 * @deprecated use above methods instread
 		 */
 		report(value: ChatAgentProgress): void;
 	}
+
+	// TODO@API
+	// support ChatResponseCommandPart
+	// support ChatResponseTextEditPart
+	// support ChatResponseCodeReferencePart
+
+	// TODO@API should the name suffix differentiate between rendered items (XYZPart)
+	// and metadata like XYZItem
+	export class ChatResponseTextPart {
+		value: string;
+		constructor(value: string);
+	}
+
+	export class ChatResponseMarkdownPart {
+		value: MarkdownString;
+		constructor(value: string | MarkdownString);
+	}
+
+	export interface ChatResponseFileTree {
+		name: string;
+		children?: ChatResponseFileTree[];
+	}
+
+	export class ChatResponseFileTreePart {
+		value: ChatResponseFileTree[];
+		baseUri: Uri;
+		constructor(value: ChatResponseFileTree[], baseUri: Uri);
+	}
+
+	export class ChatResponseAnchorPart {
+		value: Uri | Location | SymbolInformation;
+		title?: string;
+		constructor(value: Uri | Location | SymbolInformation, title?: string);
+	}
+
+	export class ChatResponseProgressPart {
+		value: string;
+		constructor(value: string);
+	}
+
+	export class ChatResponseReferencePart {
+		value: Uri | Location;
+		constructor(value: Uri | Location);
+	}
+
+	export type ChatResponsePart = ChatResponseTextPart | ChatResponseMarkdownPart | ChatResponseFileTreePart | ChatResponseAnchorPart
+		| ChatResponseProgressPart | ChatResponseReferencePart;
 
 	/**
 	 * @deprecated use ChatAgentResponseStream instead
