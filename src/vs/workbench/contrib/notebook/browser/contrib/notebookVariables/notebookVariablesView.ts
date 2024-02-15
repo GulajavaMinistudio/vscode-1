@@ -79,6 +79,7 @@ export class NotebookVariablesView extends ViewPane {
 
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
+		this.element.classList.add('debug-pane');
 
 		this.tree = <WorkbenchAsyncDataTree<INotebookScope, INotebookVariableElement>>this.instantiationService.createInstance(
 			WorkbenchAsyncDataTree,
@@ -139,7 +140,7 @@ export class NotebookVariablesView extends ViewPane {
 	private setActiveNotebook() {
 		const current = this.activeNotebook;
 		const activeEditorPane = this.editorService.activeEditorPane;
-		if (activeEditorPane && activeEditorPane.getId() === 'workbench.editor.notebook') {
+		if (activeEditorPane?.getId() === 'workbench.editor.notebook' || activeEditorPane?.getId() === 'workbench.editor.interactive') {
 			const notebookDocument = getNotebookEditorFromEditorPane(activeEditorPane)?.getViewModel()?.notebookDocument;
 			this.activeNotebook = notebookDocument;
 		}
