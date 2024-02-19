@@ -4265,7 +4265,7 @@ export class ChatAgentRequestTurn implements vscode.ChatAgentRequestTurn {
 		readonly prompt: string,
 		readonly command: string | undefined,
 		readonly variables: vscode.ChatAgentResolvedVariable[],
-		readonly agent: { extensionId: string; agent: string; agentId: string },
+		readonly agent: { extensionId: string; agent: string },
 	) { }
 }
 
@@ -4274,7 +4274,8 @@ export class ChatAgentResponseTurn implements vscode.ChatAgentResponseTurn {
 	constructor(
 		readonly response: ReadonlyArray<ChatResponseTextPart | ChatResponseMarkdownPart | ChatResponseFileTreePart | ChatResponseAnchorPart | ChatResponseCommandButtonPart>,
 		readonly result: vscode.ChatAgentResult2,
-		readonly agent: { extensionId: string; agent: string; agentId: string }
+		readonly agent: { extensionId: string; agent: string },
+		readonly command?: string
 	) { }
 }
 
@@ -4329,6 +4330,22 @@ export enum SpeechToTextStatus {
 export enum KeywordRecognitionStatus {
 	Recognized = 1,
 	Stopped = 2
+}
+
+//#endregion
+
+//#region InlineEdit
+
+export class InlineEdit implements vscode.InlineEdit {
+	constructor(
+		public readonly text: string,
+		public readonly range: Range,
+	) { }
+}
+
+export enum InlineEditTriggerKind {
+	Invoke = 0,
+	Automatic = 1,
 }
 
 //#endregion
