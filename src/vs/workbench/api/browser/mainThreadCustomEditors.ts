@@ -346,8 +346,6 @@ class MainThreadCustomEditorModel extends ResourceWorkingCopy implements ICustom
 	// this seed.
 	readonly typeId = NO_TYPE_ID;
 
-	readonly isTextBased = false;
-
 	public static async create(
 		instantiationService: IInstantiationService,
 		proxy: extHostProtocol.ExtHostCustomEditorsShape,
@@ -737,6 +735,6 @@ class MainThreadCustomEditorModel extends ResourceWorkingCopy implements ICustom
 			return backupData;
 		}
 
-		throw new Error(`Cannot back up in this state: ${errorMessage}`);
+		throw new Error(`Cannot backup in this state: ${errorMessage}`);
 	}
 }
