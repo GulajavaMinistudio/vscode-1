@@ -25,6 +25,7 @@ import { ResourceMap } from 'vs/base/common/map';
 import { FileAccess, Schemas, matchesSomeScheme } from 'vs/base/common/network';
 import { clamp } from 'vs/base/common/numbers';
 import { basename } from 'vs/base/common/path';
+import { basenameOrAuthority } from 'vs/base/common/resources';
 import { equalsIgnoreCase } from 'vs/base/common/strings';
 import { ThemeIcon } from 'vs/base/common/themables';
 import { URI } from 'vs/base/common/uri';
@@ -58,6 +59,7 @@ import { CONTEXT_CHAT_RESPONSE_SUPPORT_ISSUE_REPORTING, CONTEXT_REQUEST, CONTEXT
 import { IChatProgressRenderableResponseContent } from 'vs/workbench/contrib/chat/common/chatModel';
 import { chatAgentLeader, chatSubcommandLeader } from 'vs/workbench/contrib/chat/common/chatParserTypes';
 import { IChatCommandButton, IChatContentReference, IChatFollowup, IChatProgressMessage, IChatResponseProgressFileTreeData, InteractiveSessionVoteDirection } from 'vs/workbench/contrib/chat/common/chatService';
+import { IChatVariablesService } from 'vs/workbench/contrib/chat/common/chatVariables';
 import { IChatProgressMessageRenderData, IChatRenderData, IChatResponseMarkdownRenderData, IChatResponseViewModel, IChatWelcomeMessageViewModel, isRequestVM, isResponseVM, isWelcomeVM } from 'vs/workbench/contrib/chat/common/chatViewModel';
 import { IWordCountResult, getNWords } from 'vs/workbench/contrib/chat/common/chatWordCounter';
 import { createFileIconThemableTreeContainerScope } from 'vs/workbench/contrib/files/browser/views/explorerView';
@@ -510,6 +512,7 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 	private renderWelcomeMessage(element: IChatWelcomeMessageViewModel, templateData: IChatListItemTemplate) {
 		dom.clearNode(templateData.value);
 		dom.clearNode(templateData.referencesListContainer);
+		dom.hide(templateData.referencesListContainer);
 
 		for (const item of element.content) {
 			if (Array.isArray(item)) {
@@ -800,17 +803,22 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 
 		listDisposables.add(list.onDidOpen((e) => {
 			if (e.element) {
-				this.openerService.open(
-					'uri' in e.element.reference ? e.element.reference.uri : e.element.reference,
-					{
-						fromUserGesture: true,
-						editorOptions: {
-							...e.editorOptions,
-							...{
-								selection: 'range' in e.element.reference ? e.element.reference.range : undefined
+				const uriOrLocation = 'variableName' in e.element.reference ? e.element.reference.value : e.element.reference;
+				const uri = URI.isUri(uriOrLocation) ? uriOrLocation :
+					uriOrLocation?.uri;
+				if (uri) {
+					this.openerService.open(
+						uri,
+						{
+							fromUserGesture: true,
+							editorOptions: {
+								...e.editorOptions,
+								...{
+									selection: uriOrLocation && 'range' in uriOrLocation ? uriOrLocation.range : undefined
+								}
 							}
-						}
-					});
+						});
+				}
 			}
 		}));
 		listDisposables.add(list.onContextMenu((e) => {
@@ -1002,6 +1010,7 @@ export class ChatListItemRenderer extends Disposable implements ITreeRenderer<Ch
 
 export class ChatListDelegate implements IListVirtualDelegate<ChatTreeItem> {
 	constructor(
+		private readonly defaultElementHeight: number,
 		@ILogService private readonly logService: ILogService
 	) { }
 
@@ -1015,7 +1024,7 @@ export class ChatListDelegate implements IListVirtualDelegate<ChatTreeItem> {
 
 	getHeight(element: ChatTreeItem): number {
 		const kind = isRequestVM(element) ? 'request' : 'response';
-		const height = ('currentRenderedHeight' in element ? element.currentRenderedHeight : undefined) ?? 200;
+		const height = ('currentRenderedHeight' in element ? element.currentRenderedHeight : undefined) ?? this.defaultElementHeight;
 		this._traceLayout('getHeight', `${kind}, height=${height}`);
 		return height;
 	}
@@ -1163,10 +1172,13 @@ class ContentReferencesListPool extends Disposable {
 				alwaysConsumeMouseWheel: false,
 				accessibilityProvider: {
 					getAriaLabel: (element: IChatContentReference) => {
-						if (URI.isUri(element.reference)) {
-							return basename(element.reference.path);
+						const reference = element.reference;
+						if ('variableName' in reference) {
+							return reference.variableName;
+						} else if (URI.isUri(reference)) {
+							return basename(reference.path);
 						} else {
-							return basename(element.reference.uri.path);
+							return basename(reference.uri.path);
 						}
 					},
 
@@ -1212,6 +1224,7 @@ class ContentReferencesListRenderer implements IListRenderer<IChatContentReferen
 
 	constructor(
 		private labels: ResourceLabels,
+		@IChatVariablesService private readonly chatVariablesService: IChatVariablesService,
 	) { }
 
 	renderTemplate(container: HTMLElement): IChatContentReferenceListTemplate {
@@ -1220,18 +1233,35 @@ class ContentReferencesListRenderer implements IListRenderer<IChatContentReferen
 		return { templateDisposables, label };
 	}
 
-	renderElement(element: IChatContentReference, index: number, templateData: IChatContentReferenceListTemplate, height: number | undefined): void {
+	renderElement(data: IChatContentReference, index: number, templateData: IChatContentReferenceListTemplate, height: number | undefined): void {
+		const reference = data.reference;
 		templateData.label.element.style.display = 'flex';
-		const uri = 'uri' in element.reference ? element.reference.uri : element.reference;
-		if (matchesSomeScheme(uri, Schemas.mailto, Schemas.http, Schemas.https)) {
-			templateData.label.setResource({ resource: uri, name: uri.toString() }, { icon: Codicon.globe });
+		if ('variableName' in reference) {
+			if (reference.value) {
+				const uri = URI.isUri(reference.value) ? reference.value : reference.value.uri;
+				templateData.label.setResource(
+					{
+						resource: uri,
+						name: basenameOrAuthority(uri),
+						description: `#${reference.variableName}`,
+						range: 'range' in reference.value ? reference.value.range : undefined
+					});
+			} else {
+				const variable = this.chatVariablesService.getVariable(reference.variableName);
+				templateData.label.setLabel(`#${reference.variableName}`, undefined, { title: variable?.description });
+			}
 		} else {
-			templateData.label.setFile(uri, {
-				fileKind: FileKind.FILE,
-				// Should not have this live-updating data on a historical reference
-				fileDecorations: { badges: false, colors: false },
-				range: 'range' in element.reference ? element.reference.range : undefined
-			});
+			const uri = 'uri' in reference ? reference.uri : reference;
+			if (matchesSomeScheme(uri, Schemas.mailto, Schemas.http, Schemas.https)) {
+				templateData.label.setResource({ resource: uri, name: uri.toString() }, { icon: Codicon.globe });
+			} else {
+				templateData.label.setFile(uri, {
+					fileKind: FileKind.FILE,
+					// Should not have this live-updating data on a historical reference
+					fileDecorations: { badges: false, colors: false },
+					range: 'range' in reference ? reference.range : undefined
+				});
+			}
 		}
 	}
 
