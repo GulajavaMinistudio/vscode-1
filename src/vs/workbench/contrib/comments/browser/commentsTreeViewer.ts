@@ -135,7 +135,7 @@ export class ResourceWithCommentsRenderer implements IListRenderer<ITreeNode<Res
 	}
 }
 
-class CommentsMenus implements IDisposable {
+export class CommentsMenus implements IDisposable {
 	private contextKeyService: IContextKeyService | undefined;
 
 	constructor(
@@ -232,8 +232,10 @@ export class CommentNodeRenderer implements IListRenderer<ITreeNode<CommentNode>
 	}
 
 	private getCountString(commentCount: number): string {
-		if (commentCount > 1) {
-			return nls.localize('commentsCount', "{0} comments", commentCount);
+		if (commentCount > 2) {
+			return nls.localize('commentsCountReplies', "{0} replies", commentCount - 1);
+		} else if (commentCount === 2) {
+			return nls.localize('commentsCountReply', "1 reply");
 		} else {
 			return nls.localize('commentCount', "1 comment");
 		}
