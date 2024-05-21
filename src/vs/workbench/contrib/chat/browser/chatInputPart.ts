@@ -174,7 +174,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 	}
 
 	setState(inputValue: string | undefined): void {
-		const history = this.historyService.getHistory();
+		const history = this.historyService.getHistory(this.location);
 		this.history = new HistoryNavigator(history, 50);
 
 		if (typeof inputValue === 'string') {
@@ -441,7 +441,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 					hidePath: true,
 				});
 			} else {
-				label.setLabel(attachment.name);
+				label.setLabel(attachment.fullName ?? attachment.name);
 			}
 
 			const clearButton = new Button(widget, { supportIcons: true });
@@ -523,7 +523,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 
 	saveState(): void {
 		const inputHistory = this.history.getHistory();
-		this.historyService.saveHistory(inputHistory);
+		this.historyService.saveHistory(this.location, inputHistory);
 	}
 }
 
