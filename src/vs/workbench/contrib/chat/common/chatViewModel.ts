@@ -15,9 +15,10 @@ import { annotateVulnerabilitiesInText } from 'vs/workbench/contrib/chat/common/
 import { getFullyQualifiedId, IChatAgentCommand, IChatAgentData, IChatAgentNameService, IChatAgentResult } from 'vs/workbench/contrib/chat/common/chatAgents';
 import { ChatModelInitState, IChatModel, IChatProgressRenderableResponseContent, IChatRequestModel, IChatRequestVariableEntry, IChatResponseModel, IChatTextEditGroup, IChatWelcomeMessageContent, IResponse } from 'vs/workbench/contrib/chat/common/chatModel';
 import { IParsedChatRequest } from 'vs/workbench/contrib/chat/common/chatParserTypes';
-import { ChatAgentVoteDirection, IChatContentReference, IChatFollowup, IChatProgressMessage, IChatResponseErrorDetails, IChatTask, IChatUsedContext } from 'vs/workbench/contrib/chat/common/chatService';
+import { ChatAgentVoteDirection, IChatCodeCitation, IChatContentReference, IChatFollowup, IChatProgressMessage, IChatResponseErrorDetails, IChatTask, IChatUsedContext } from 'vs/workbench/contrib/chat/common/chatService';
 import { countWords } from 'vs/workbench/contrib/chat/common/chatWordCounter';
 import { CodeBlockModelCollection } from './codeBlockModelCollection';
+import { hash } from 'vs/base/common/hash';
 
 export function isRequestVM(item: unknown): item is IChatRequestViewModel {
 	return !!item && typeof item === 'object' && 'message' in item;
@@ -125,9 +126,17 @@ export interface IChatReferences {
 }
 
 /**
+ * Content type for citations used during rendering, not in the model
+ */
+export interface IChatCodeCitations {
+	citations: ReadonlyArray<IChatCodeCitation>;
+	kind: 'codeCitations';
+}
+
+/**
  * Type for content parts rendered by IChatListRenderer
  */
-export type IChatRendererContent = IChatProgressRenderableResponseContent | IChatReferences;
+export type IChatRendererContent = IChatProgressRenderableResponseContent | IChatReferences | IChatCodeCitations;
 
 export interface IChatLiveUpdateData {
 	firstWordTime: number;
@@ -152,6 +161,7 @@ export interface IChatResponseViewModel {
 	readonly response: IResponse;
 	readonly usedContext: IChatUsedContext | undefined;
 	readonly contentReferences: ReadonlyArray<IChatContentReference>;
+	readonly codeCitations: ReadonlyArray<IChatCodeCitation>;
 	readonly progressMessages: ReadonlyArray<IChatProgressMessage>;
 	readonly isComplete: boolean;
 	readonly isCanceled: boolean;
@@ -335,7 +345,7 @@ export class ChatRequestViewModel implements IChatRequestViewModel {
 	}
 
 	get dataId() {
-		return this.id + `_${ChatModelInitState[this._model.session.initState]}`;
+		return this.id + `_${ChatModelInitState[this._model.session.initState]}_${hash(this.variables)}`;
 	}
 
 	get sessionId() {
@@ -434,6 +444,10 @@ export class ChatResponseViewModel extends Disposable implements IChatResponseVi
 
 	get contentReferences(): ReadonlyArray<IChatContentReference> {
 		return this._model.contentReferences;
+	}
+
+	get codeCitations(): ReadonlyArray<IChatCodeCitation> {
+		return this._model.codeCitations;
 	}
 
 	get progressMessages(): ReadonlyArray<IChatProgressMessage> {
