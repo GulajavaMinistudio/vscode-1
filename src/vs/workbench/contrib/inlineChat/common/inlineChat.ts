@@ -16,6 +16,7 @@ export const enum InlineChatConfigKeys {
 	Mode = 'inlineChat.mode',
 	FinishOnType = 'inlineChat.finishOnType',
 	AcceptedOrDiscardBeforeSave = 'inlineChat.acceptedOrDiscardBeforeSave',
+	OnlyZoneWidget = 'inlineChat.experimental.onlyZoneWidget',
 	HoldToSpeech = 'inlineChat.holdToSpeech',
 	AccessibleDiffView = 'inlineChat.accessibleDiffView'
 }
@@ -64,7 +65,13 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 				localize('accessibleDiffView.on', "The accessible diff viewer is always enabled."),
 				localize('accessibleDiffView.off', "The accessible diff viewer is never enabled."),
 			],
-		}
+		},
+		[InlineChatConfigKeys.OnlyZoneWidget]: {
+			description: localize('onlyZone', "Whether inline chat opens directly as zone widget, between the lines, instead of the overlay widget which turns into a zone."),
+			default: false,
+			type: 'boolean',
+			tags: ['experimental']
+		},
 	}
 });
 
@@ -111,6 +118,7 @@ export const ACTION_TOGGLE_DIFF = 'inlineChat.toggleDiff';
 
 export const MENU_INLINE_CHAT_CONTENT_STATUS = MenuId.for('inlineChat.content.status');
 export const MENU_INLINE_CHAT_WIDGET_STATUS = MenuId.for('inlineChatWidget.status');
+export const MENU_INLINE_CHAT_ZONE = MenuId.for('inlineChatWidget.changesZone');
 
 // --- colors
 
