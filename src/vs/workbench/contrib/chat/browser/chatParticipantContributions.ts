@@ -74,10 +74,10 @@ const chatParticipantExtensionPoint = extensionsRegistry.ExtensionsRegistry.regi
 					items: {
 						additionalProperties: false,
 						type: 'object',
-						defaultSnippets: [{ body: { categoryName: '', description: '', examples: [] } }],
-						required: ['categoryName', 'description', 'examples'],
+						defaultSnippets: [{ body: { category: '', description: '', examples: [] } }],
+						required: ['category', 'description', 'examples'],
 						properties: {
-							categoryName: {
+							category: {
 								markdownDescription: localize('chatParticipantDisambiguationCategory', "A detailed name for this category, e.g. `workspace_questions` or `web_questions`."),
 								type: 'string'
 							},
@@ -127,10 +127,10 @@ const chatParticipantExtensionPoint = extensionsRegistry.ExtensionsRegistry.regi
 								items: {
 									additionalProperties: false,
 									type: 'object',
-									defaultSnippets: [{ body: { categoryName: '', description: '', examples: [] } }],
-									required: ['categoryName', 'description', 'examples'],
+									defaultSnippets: [{ body: { category: '', description: '', examples: [] } }],
+									required: ['category', 'description', 'examples'],
 									properties: {
-										categoryName: {
+										category: {
 											markdownDescription: localize('chatCommandDisambiguationCategory', "A detailed name for this category, e.g. `workspace_questions` or `web_questions`."),
 											type: 'string'
 										},
@@ -203,7 +203,7 @@ export class ChatExtensionPointHandler implements IWorkbenchContribution {
 						continue;
 					}
 
-					if ((providerDescriptor.defaultImplicitVariables || providerDescriptor.locations) && !isProposedApiEnabled(extension.description, 'chatParticipantAdditions')) {
+					if ((providerDescriptor.defaultImplicitVariables || providerDescriptor.locations || providerDescriptor.supportsModelPicker) && !isProposedApiEnabled(extension.description, 'chatParticipantAdditions')) {
 						this.logService.error(`Extension '${extension.description.identifier.value}' CANNOT use API proposal: chatParticipantAdditions.`);
 						continue;
 					}
@@ -214,19 +214,23 @@ export class ChatExtensionPointHandler implements IWorkbenchContribution {
 					}
 
 					const participantsAndCommandsDisambiguation: {
-						categoryName: string;
+						category: string;
 						description: string;
 						examples: string[];
 					}[] = [];
 
 					if (isProposedApiEnabled(extension.description, 'contribChatParticipantDetection')) {
 						if (providerDescriptor.disambiguation?.length) {
-							participantsAndCommandsDisambiguation.push(...providerDescriptor.disambiguation);
+							participantsAndCommandsDisambiguation.push(...providerDescriptor.disambiguation.map((d) => ({
+								...d, category: d.category ?? d.categoryName
+							})));
 						}
 						if (providerDescriptor.commands) {
 							for (const command of providerDescriptor.commands) {
 								if (command.disambiguation?.length) {
-									participantsAndCommandsDisambiguation.push(...command.disambiguation);
+									participantsAndCommandsDisambiguation.push(...command.disambiguation.map((d) => ({
+										...d, category: d.category ?? d.categoryName
+									})));
 								}
 							}
 						}
@@ -242,6 +246,7 @@ export class ChatExtensionPointHandler implements IWorkbenchContribution {
 							extensionDisplayName: extension.description.displayName ?? extension.description.name,
 							id: providerDescriptor.id,
 							description: providerDescriptor.description,
+							supportsModelPicker: providerDescriptor.supportsModelPicker,
 							when: providerDescriptor.when,
 							metadata: {
 								isSticky: providerDescriptor.isSticky,
