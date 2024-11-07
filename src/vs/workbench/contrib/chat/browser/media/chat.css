@@ -305,9 +305,19 @@
 	margin: 8px 0 16px 0;
 }
 
-.interactive-item-container .value .rendered-markdown .codicon {
-	position: relative;
-	top: 2px;
+.interactive-item-container .value .rendered-markdown {
+	/* Codicons next to text need to be aligned with the text */
+	.codicon {
+		position: relative;
+		top: 2px;
+	}
+
+	/* But codicons in toolbars and other widgets assume the natural position of the codicon */
+	.chat-codeblock-pill-widget .codicon,
+	.monaco-toolbar .codicon {
+		position: initial;
+		top: initial;
+	}
 }
 
 .interactive-item-container .value .rendered-markdown p {
@@ -451,6 +461,10 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	flex-grow: 1;
 }
 
+.interactive-item-container.interactive-request.minimal .rendered-markdown .chat-animated-ellipsis {
+	display: inline-flex;
+}
+
 .interactive-item-container.minimal .user > .username {
 	display: none;
 }
@@ -557,6 +571,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	align-content: center;
 }
 
 .interactive-session .chat-editing-session .chat-editing-session-container .monaco-progress-container {
@@ -570,6 +585,10 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	flex-wrap: nowrap;
 	gap: 6px;
 	align-items: center;
+}
+
+.interactive-session .chat-editing-session .chat-editing-session-toolbar-actions {
+	margin: 3px 0px;
 }
 
 .interactive-session .chat-editing-session .monaco-button {
@@ -697,6 +716,24 @@ have to be updated for changes to the rules above, or to support more deeply nes
 
 .interactive-session .chat-input-toolbars :first-child {
 	margin-right: auto;
+}
+
+.interactive-session .chat-input-toolbars > .chat-execute-toolbar {
+	min-width: 0px;
+
+	.chat-modelPicker-item {
+		min-width: 0px;
+
+		.chat-model-label {
+			min-width: 0px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.codicon {
+			flex-shrink: 0;
+		}
+	}
 }
 
 .interactive-session .chat-input-toolbars .chat-modelPicker-item .action-label {
@@ -1099,6 +1136,13 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	}
 }
 
+.interactive-session .chat-editing-session-list {
+
+	.monaco-icon-label {
+		padding: 0px 3px;
+	}
+}
+
 .interactive-item-container .chat-notification-widget {
 	padding: 8px 12px;
 }
@@ -1147,9 +1191,11 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	font-size: 12px;
 }
 
-.interactive-item-container .rendered-markdown.progress-step {
+.interactive-item-container .progress-container {
 	display: flex;
-	gap: 2px;
+}
+
+.interactive-item-container .rendered-markdown.progress-step {
 	margin-left: 4px;
 	white-space: normal;
 }
@@ -1163,20 +1209,16 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .interactive-item-container .rendered-markdown.progress-step > p {
 	color: var(--vscode-descriptionForeground);
 	font-size: 12px;
-	display: flex;
-	gap: 8px;
-	align-items: center;
 	margin-bottom: 6px;
-	flex: 1;
 }
 
-.interactive-item-container .rendered-markdown.progress-step > p .codicon {
+.interactive-item-container .progress-container .codicon {
 	/* Very aggressive list styles try to apply focus colors to every codicon in a list row. */
 	color: var(--vscode-icon-foreground) !important;
-}
 
-.interactive-item-container .rendered-markdown.progress-step > p .codicon.codicon-check {
-	color: var(--vscode-debugIcon-startForeground) !important;
+	&.codicon-check {
+		color: var(--vscode-debugIcon-startForeground) !important;
+	}
 }
 
 .interactive-item-container .chat-command-button {
