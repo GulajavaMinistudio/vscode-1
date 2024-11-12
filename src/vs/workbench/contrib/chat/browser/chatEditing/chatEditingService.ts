@@ -4,12 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { compareBy, delta } from '../../../../../base/common/arrays.js';
-import { AsyncIterableSource } from '../../../../../base/common/async.js';
+import { AsyncIterableSource, raceTimeout } from '../../../../../base/common/async.js';
 import { CancellationToken, CancellationTokenSource } from '../../../../../base/common/cancellation.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { BugIndicatingError } from '../../../../../base/common/errors.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable, DisposableStore, IDisposable } from '../../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
 import { ResourceMap } from '../../../../../base/common/map.js';
 import { derived, IObservable, observableValue, runOnChange, ValueWithChangeEventFromObservable } from '../../../../../base/common/observable.js';
 import { compare } from '../../../../../base/common/strings.js';
@@ -32,8 +32,9 @@ import { IEditorService } from '../../../../services/editor/common/editorService
 import { MultiDiffEditor } from '../../../multiDiffEditor/browser/multiDiffEditor.js';
 import { MultiDiffEditorInput } from '../../../multiDiffEditor/browser/multiDiffEditorInput.js';
 import { IMultiDiffSourceResolver, IMultiDiffSourceResolverService, IResolvedMultiDiffSource, MultiDiffEditorItem } from '../../../multiDiffEditor/browser/multiDiffSourceResolverService.js';
+import { ChatAgentLocation, IChatAgentService } from '../../common/chatAgents.js';
 import { ChatContextKeys } from '../../common/chatContextKeys.js';
-import { applyingChatEditsContextKey, applyingChatEditsFailedContextKey, CHAT_EDITING_MULTI_DIFF_SOURCE_RESOLVER_SCHEME, chatEditingMaxFileAssignmentName, chatEditingResourceContextKey, ChatEditingSessionState, decidedChatEditingResourceContextKey, defaultChatEditingMaxFileLimit, hasAppliedChatEditsContextKey, hasUndecidedChatEditingResourceContextKey, IChatEditingService, IChatEditingSession, IChatEditingSessionStream, IModifiedFileEntry, inChatEditingSessionContextKey, WorkingSetEntryState } from '../../common/chatEditingService.js';
+import { applyingChatEditsContextKey, applyingChatEditsFailedContextKey, CHAT_EDITING_MULTI_DIFF_SOURCE_RESOLVER_SCHEME, chatEditingMaxFileAssignmentName, chatEditingResourceContextKey, ChatEditingSessionState, decidedChatEditingResourceContextKey, defaultChatEditingMaxFileLimit, hasAppliedChatEditsContextKey, hasUndecidedChatEditingResourceContextKey, IChatEditingService, IChatEditingSession, IChatEditingSessionStream, IChatRelatedFilesProvider, IModifiedFileEntry, inChatEditingSessionContextKey, WorkingSetEntryState } from '../../common/chatEditingService.js';
 import { IChatResponseModel, IChatTextEditGroup } from '../../common/chatModel.js';
 import { IChatService } from '../../common/chatService.js';
 import { ChatEditingSession } from './chatEditingSession.js';
@@ -75,6 +76,8 @@ export class ChatEditingService extends Disposable implements IChatEditingServic
 
 	private _applyingChatEditsFailedContextKey: IContextKey<boolean | undefined>;
 
+	private _chatRelatedFilesProviders = new Map<number, IChatRelatedFilesProvider>();
+
 	constructor(
 		@IEditorGroupsService private readonly _editorGroupsService: IEditorGroupsService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
@@ -91,7 +94,7 @@ export class ChatEditingService extends Disposable implements IChatEditingServic
 		super();
 		this._applyingChatEditsFailedContextKey = applyingChatEditsFailedContextKey.bindTo(contextKeyService);
 		this._applyingChatEditsFailedContextKey.set(false);
-		this._register(decorationsService.registerDecorationsProvider(new ChatDecorationsProvider(this._currentSessionObs)));
+		this._register(decorationsService.registerDecorationsProvider(_instantiationService.createInstance(ChatDecorationsProvider, this._currentSessionObs)));
 		this._register(multiDiffSourceResolverService.registerResolver(_instantiationService.createInstance(ChatEditingMultiDiffSourceResolver, this._currentSessionObs)));
 		textModelService.registerTextModelContentProvider(ChatEditingTextModelContentProvider.scheme, _instantiationService.createInstance(ChatEditingTextModelContentProvider, this._currentSessionObs));
 		textModelService.registerTextModelContentProvider(ChatEditingSnapshotTextModelContentProvider.scheme, _instantiationService.createInstance(ChatEditingSnapshotTextModelContentProvider, this._currentSessionObs));
@@ -383,6 +386,37 @@ export class ChatEditingService extends Disposable implements IChatEditingServic
 		}
 		return editors;
 	}
+
+	registerRelatedFilesProvider(handle: number, provider: IChatRelatedFilesProvider): IDisposable {
+		this._chatRelatedFilesProviders.set(handle, provider);
+		return toDisposable(() => {
+			this._chatRelatedFilesProviders.delete(handle);
+		});
+	}
+
+	async getRelatedFiles(chatSessionId: string, prompt: string, token: CancellationToken): Promise<readonly URI[] | undefined> {
+		const currentSession = this._currentSessionObs.get();
+		if (!currentSession || chatSessionId !== currentSession.chatSessionId) {
+			return undefined;
+		}
+		const currentWorkingSet = [...currentSession.workingSet.keys()];
+
+		const providers = Array.from(this._chatRelatedFilesProviders.values());
+		const result = await Promise.all(providers.map(async provider => {
+			try {
+				return await raceTimeout(provider.provideRelatedFiles({ prompt, files: currentWorkingSet }, token), 2000);
+			} catch (e) {
+				return undefined;
+			}
+		}));
+
+		return result.reduce<URI[]>((acc, cur) => {
+			if (cur) {
+				acc.push(...cur);
+			}
+			return acc;
+		}, []);
+	}
 }
 
 /**
@@ -430,7 +464,8 @@ class ChatDecorationsProvider extends Disposable implements IDecorationsProvider
 	);
 
 	constructor(
-		private readonly _session: IObservable<IChatEditingSession | null>
+		private readonly _session: IObservable<IChatEditingSession | null>,
+		@IChatAgentService private readonly _chatAgentService: IChatAgentService
 	) {
 		super();
 	}
@@ -446,9 +481,11 @@ class ChatDecorationsProvider extends Disposable implements IDecorationsProvider
 		}
 		const isModified = this._modifiedUris.get().some(e => e.toString() === uri.toString());
 		if (isModified) {
+			const defaultAgentName = this._chatAgentService.getDefaultAgent(ChatAgentLocation.EditingSession)?.fullName;
 			return {
 				weight: 1000,
 				letter: Codicon.diffModified,
+				tooltip: defaultAgentName ? localize('chatEditing.modified', "Pending changes from {0}", defaultAgentName) : localize('chatEditing.modified2', "Pending changes from chat"),
 				bubble: true
 			};
 		}
